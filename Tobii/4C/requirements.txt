@@ -1,0 +1,4 @@
+tobii-research
+python-osc
+opencv-python
+numpy
