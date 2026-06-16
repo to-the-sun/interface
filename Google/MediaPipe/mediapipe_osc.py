@@ -251,7 +251,7 @@ def main():
 
         win_name = 'Google MediaPipe'
         cv2.namedWindow(win_name, cv2.WINDOW_NORMAL)
-        cv2.resizeWindow(win_name, 1615, 500)
+        cv2.resizeWindow(win_name, 1915, 500)
         cv2.setMouseCallback(win_name, on_mouse)
 
         while cap.isOpened() and state.running:
@@ -338,10 +338,10 @@ def main():
                     state.client.send_message(f_det.address, float(f_det.current_val))
 
             # --- Rendering UI ---
-            sidebar_col_w = 325
+            sidebar_col_w = 425
             canvas_h = max(h, 500)
             sidebar = np.zeros((canvas_h, sidebar_col_w * 3, 3), dtype=np.uint8)
-            y_start, y_step, rows_per_col = 20, 15, 32
+            y_start, y_step, rows_per_col = 20, 15, 30
 
             for i, f in enumerate(state.features):
                 col, row = i // rows_per_col, i % rows_per_col
@@ -351,7 +351,7 @@ def main():
                 if f.enabled:
                     cv2.rectangle(sidebar, (tx+2, ty-cb_size+2), (tx+cb_size-2, ty-2), (0,255,0), -1)
                 f.ui_rect = [w + tx, ty-cb_size, w + tx + sidebar_col_w, ty+5]
-                cv2.putText(sidebar, f.name[:30], (tx+15, ty), cv2.FONT_HERSHEY_SIMPLEX, 0.35, (255, 255, 255), 1)
+                cv2.putText(sidebar, f.name[:40], (tx+15, ty), cv2.FONT_HERSHEY_SIMPLEX, 0.35, (255, 255, 255), 1)
                 if not f.is_complex:
                     bar_max_w = sidebar_col_w - 130
                     bar_w = int(min(1.0, abs(f.current_val/f.max_v)) * bar_max_w) if f.max_v != 0 else 0
