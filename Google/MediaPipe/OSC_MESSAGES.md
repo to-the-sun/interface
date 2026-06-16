@@ -51,7 +51,7 @@ Head pose parameters are streamed as individual float values.
 
 ---
 
-## 5. Detection Confidence Score
-*   **OSC Address:** `/detection_confidence_score`
+## 5. Detection Confidence
+*   **OSC Address:** `/detection_confidence`
 *   **Format:** A single float value between `0.0` and `1.0`.
 *   **Default State:** Enabled.
