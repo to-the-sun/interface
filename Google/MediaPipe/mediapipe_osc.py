@@ -21,6 +21,7 @@ except ImportError:
 OSC_IP = "127.0.0.1"
 BASE_OSC_PORT = 9001
 MODEL_URL = "https://storage.googleapis.com/mediapipe-models/face_landmarker/face_landmarker/float16/1/face_landmarker.task"
+DETECTOR_MODEL_URL = "https://storage.googleapis.com/mediapipe-models/face_detector/blaze_face_short_range/float16/1/blaze_face_short_range.tflite"
 TARGET_WEBCAM_NAME = ""
 CAMERA_INDEX_OVERRIDE = None # Set to an integer to force a specific camera index
 
@@ -30,6 +31,7 @@ def resource_path(relative_path):
     return os.path.join(os.path.abspath("."), relative_path)
 
 MODEL_PATH = resource_path("face_landmarker.task")
+DETECTOR_MODEL_PATH = resource_path("blaze_face_short_range.tflite")
 CONFIG_FILE = "checkbox_states.json"
 
 def camel_to_snake(name):
@@ -170,20 +172,33 @@ def on_mouse(event, x, y, flags, param):
                 break
 
 # --- Mediapipe Setup ---
-def setup_detector(min_det_conf=0.5):
+def setup_detectors(min_det_conf=0.5):
     if not os.path.exists(MODEL_PATH):
         print("Downloading face landmarker model...")
         urllib.request.urlretrieve(MODEL_URL, MODEL_PATH)
+    if not os.path.exists(DETECTOR_MODEL_PATH):
+        print("Downloading face detector model...")
+        urllib.request.urlretrieve(DETECTOR_MODEL_URL, DETECTOR_MODEL_PATH)
 
-    base_options = python.BaseOptions(model_asset_path=MODEL_PATH)
-    options = vision.FaceLandmarkerOptions(
-        base_options=base_options,
+    # Landmarker
+    base_options_lm = python.BaseOptions(model_asset_path=MODEL_PATH)
+    options_lm = vision.FaceLandmarkerOptions(
+        base_options=base_options_lm,
         output_face_blendshapes=True,
         output_facial_transformation_matrixes=True,
         min_face_detection_confidence=min_det_conf,
         min_face_presence_confidence=min_det_conf,
         running_mode=vision.RunningMode.VIDEO)
-    return vision.FaceLandmarker.create_from_options(options)
+
+    # Detector
+    base_options_det = python.BaseOptions(model_asset_path=DETECTOR_MODEL_PATH)
+    options_det = vision.FaceDetectorOptions(
+        base_options=base_options_det,
+        min_detection_confidence=min_det_conf,
+        running_mode=vision.RunningMode.VIDEO)
+
+    return (vision.FaceLandmarker.create_from_options(options_lm),
+            vision.FaceDetector.create_from_options(options_det))
 
 # --- Main Application ---
 def main():
@@ -210,7 +225,7 @@ def main():
         print(f"OSC Addresses: /eye_blink_left etc.\n")
         print("Press 'n' in the window to cycle to the next camera if the screen is black.")
 
-        detector = setup_detector(state.min_detection_confidence)
+        landmarker, detector = setup_detectors(state.min_detection_confidence)
 
         def get_cap(idx):
             if sys.platform == "win32":
@@ -241,8 +256,9 @@ def main():
 
         while cap.isOpened() and state.running:
             if state.detector_dirty:
+                landmarker.close()
                 detector.close()
-                detector = setup_detector(state.min_detection_confidence)
+                landmarker, detector = setup_detectors(state.min_detection_confidence)
                 state.detector_dirty = False
 
             success, image = cap.read()
@@ -252,7 +268,8 @@ def main():
             h, w, _ = image.shape
             timestamp = int(time.time() * 1000)
             mp_image = mp.Image(image_format=mp.ImageFormat.SRGB, data=cv2.cvtColor(image, cv2.COLOR_BGR2RGB))
-            result = detector.detect_for_video(mp_image, timestamp)
+            result = landmarker.detect_for_video(mp_image, timestamp)
+            det_result = detector.detect_for_video(mp_image, timestamp)
 
             display_img = image.copy()
             cv2.putText(display_img, WEBCAM_NAME.replace("_", " "), (10, 30), cv2.FONT_HERSHEY_SIMPLEX, 0.8, (0, 255, 0), 2)
@@ -300,7 +317,10 @@ def main():
                     state.client.send_message(f_mx.address, m_flat)
 
                 f_det = state.features[8]
-                f_det.current_val = 1.0 # If we are here, face is detected
+                conf = 0.0
+                if det_result.detections:
+                    conf = det_result.detections[0].categories[0].score
+                f_det.current_val = conf
                 if f_det.enabled:
                     state.client.send_message(f_det.address, float(f_det.current_val))
 
@@ -353,6 +373,8 @@ def main():
 
             time.sleep(0.001)
 
+        landmarker.close()
+        detector.close()
         cap.release()
         cv2.destroyAllWindows()
 
