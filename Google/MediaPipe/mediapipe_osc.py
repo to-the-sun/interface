@@ -100,6 +100,9 @@ class AppState:
         self.client = udp_client.SimpleUDPClient(OSC_IP, OSC_PORT)
         self.features = []
         self.config = self.load_config()
+        self.min_detection_confidence = self.config.get("min_detection_confidence", 0.5)
+        self.detector_dirty = False
+        self.threshold_ui_rects = {}
         self.setup_features()
 
     def load_config(self):
@@ -115,6 +118,7 @@ class AppState:
         new_config = self.config.copy()
         for f in self.features:
             new_config[f.address] = f.enabled
+        new_config["min_detection_confidence"] = self.min_detection_confidence
         self.config = new_config
         try:
             with open(CONFIG_FILE, 'w') as f:
@@ -134,6 +138,7 @@ class AppState:
 
         self.features.append(Feature("Landmarks", "/landmarks", self.config.get("/landmarks", False), True))
         self.features.append(Feature("Transformation Matrix", "/transformation_matrix", self.config.get("/transformation_matrix", False), True))
+        self.features.append(Feature("Detection Confidence Score", "/detection_confidence_score", self.config.get("/detection_confidence_score", True)))
         self.blendshape_init = False
 
     def init_blendshapes(self, blendshapes):
@@ -147,6 +152,17 @@ state = AppState()
 
 def on_mouse(event, x, y, flags, param):
     if event == cv2.EVENT_LBUTTONDOWN:
+        # Check Threshold Buttons
+        for btn, rect in state.threshold_ui_rects.items():
+            if rect[0] <= x <= rect[2] and rect[1] <= y <= rect[3]:
+                if btn == "+":
+                    state.min_detection_confidence = min(1.0, state.min_detection_confidence + 0.05)
+                else:
+                    state.min_detection_confidence = max(0.0, state.min_detection_confidence - 0.05)
+                state.detector_dirty = True
+                state.save_config()
+                return
+
         for f in state.features:
             if f.ui_rect and f.ui_rect[0] <= x <= f.ui_rect[2] and f.ui_rect[1] <= y <= f.ui_rect[3]:
                 f.enabled = not f.enabled
@@ -154,7 +170,7 @@ def on_mouse(event, x, y, flags, param):
                 break
 
 # --- Mediapipe Setup ---
-def setup_detector():
+def setup_detector(min_det_conf=0.5):
     if not os.path.exists(MODEL_PATH):
         print("Downloading face landmarker model...")
         urllib.request.urlretrieve(MODEL_URL, MODEL_PATH)
@@ -164,6 +180,8 @@ def setup_detector():
         base_options=base_options,
         output_face_blendshapes=True,
         output_facial_transformation_matrixes=True,
+        min_face_detection_confidence=min_det_conf,
+        min_face_presence_confidence=min_det_conf,
         running_mode=vision.RunningMode.VIDEO)
     return vision.FaceLandmarker.create_from_options(options)
 
@@ -192,7 +210,7 @@ def main():
         print(f"OSC Addresses: /eye_blink_left etc.\n")
         print("Press 'n' in the window to cycle to the next camera if the screen is black.")
 
-        detector = setup_detector()
+        detector = setup_detector(state.min_detection_confidence)
 
         def get_cap(idx):
             if sys.platform == "win32":
@@ -222,6 +240,11 @@ def main():
         cv2.setMouseCallback(win_name, on_mouse)
 
         while cap.isOpened() and state.running:
+            if state.detector_dirty:
+                detector.close()
+                detector = setup_detector(state.min_detection_confidence)
+                state.detector_dirty = False
+
             success, image = cap.read()
             if not success: break
 
@@ -234,13 +257,29 @@ def main():
             display_img = image.copy()
             cv2.putText(display_img, WEBCAM_NAME.replace("_", " "), (10, 30), cv2.FONT_HERSHEY_SIMPLEX, 0.8, (0, 255, 0), 2)
 
+            # Threshold UI
+            t_txt = f"Min Confidence: {state.min_detection_confidence:.2f}"
+            t_size = cv2.getTextSize(t_txt, cv2.FONT_HERSHEY_SIMPLEX, 0.5, 1)[0]
+            tx = w - t_size[0] - 80
+            cv2.putText(display_img, t_txt, (tx, 30), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 0), 1)
+
+            # Buttons
+            bx1, bx2 = w - 70, w - 40
+            cv2.rectangle(display_img, (bx1, 10), (bx1+25, 35), (0, 255, 0), 1)
+            cv2.putText(display_img, "-", (bx1+7, 28), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 255, 0), 2)
+            state.threshold_ui_rects["-"] = [bx1, 10, bx1+25, 35]
+
+            cv2.rectangle(display_img, (bx2, 10), (bx2+25, 35), (0, 255, 0), 1)
+            cv2.putText(display_img, "+", (bx2+5, 28), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 255, 0), 2)
+            state.threshold_ui_rects["+"] = [bx2, 10, bx2+25, 35]
+
             if result.face_landmarks:
                 for landmark in result.face_landmarks[0]:
                     cv2.circle(display_img, (int(landmark.x * w), int(landmark.y * h)), 1, (0, 255, 0), -1)
 
             # --- Feature Processing & OSC ---
-            if result.face_blendshapes:
-                if not state.blendshape_init:
+            if result.face_landmarks:
+                if not state.blendshape_init and result.face_blendshapes:
                     state.init_blendshapes(result.face_blendshapes[0])
 
                 pose_vals = get_pose_params(result.facial_transformation_matrixes[0])
@@ -260,12 +299,23 @@ def main():
                     m_flat = [float(v) for row in result.facial_transformation_matrixes[0] for v in row]
                     state.client.send_message(f_mx.address, m_flat)
 
-                bs_offset = 8
-                for i, b in enumerate(result.face_blendshapes[0]):
-                    f = state.features[bs_offset + i]
-                    f.current_val = b.score
-                    if f.enabled:
-                        state.client.send_message(f.address, float(b.score))
+                f_det = state.features[8]
+                f_det.current_val = 1.0 # If we are here, face is detected
+                if f_det.enabled:
+                    state.client.send_message(f_det.address, float(f_det.current_val))
+
+                if result.face_blendshapes:
+                    bs_offset = 9
+                    for i, b in enumerate(result.face_blendshapes[0]):
+                        f = state.features[bs_offset + i]
+                        f.current_val = b.score
+                        if f.enabled:
+                            state.client.send_message(f.address, float(b.score))
+            else:
+                f_det = state.features[8]
+                f_det.current_val = 0.0
+                if f_det.enabled:
+                    state.client.send_message(f_det.address, float(f_det.current_val))
 
             # --- Rendering UI ---
             sidebar_col_w = 260
