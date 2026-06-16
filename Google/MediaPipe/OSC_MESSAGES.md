@@ -48,3 +48,10 @@ Head pose parameters are streamed as individual float values.
 | `/pose_pitch` | Pitch rotation | degrees |
 | `/pose_yaw` | Yaw rotation | degrees |
 | `/pose_roll` | Roll rotation | degrees |
+
+---
+
+## 5. Detection Confidence Score
+*   **OSC Address:** `/detection_confidence_score`
+*   **Format:** A single float value between `0.0` and `1.0`.
+*   **Default State:** Enabled.
