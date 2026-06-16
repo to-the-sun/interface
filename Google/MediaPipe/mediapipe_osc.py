@@ -140,7 +140,7 @@ class AppState:
 
         self.features.append(Feature("Landmarks", "/landmarks", self.config.get("/landmarks", False), True))
         self.features.append(Feature("Transformation Matrix", "/transformation_matrix", self.config.get("/transformation_matrix", False), True))
-        self.features.append(Feature("Detection Confidence Score", "/detection_confidence_score", self.config.get("/detection_confidence_score", True)))
+        self.features.append(Feature("Detection Confidence", "/detection_confidence", self.config.get("/detection_confidence", True)))
         self.blendshape_init = False
 
     def init_blendshapes(self, blendshapes):
@@ -251,7 +251,7 @@ def main():
 
         win_name = 'Google MediaPipe'
         cv2.namedWindow(win_name, cv2.WINDOW_NORMAL)
-        cv2.resizeWindow(win_name, 1420, 480)
+        cv2.resizeWindow(win_name, 1600, 500)
         cv2.setMouseCallback(win_name, on_mouse)
 
         while cap.isOpened() and state.running:
@@ -338,9 +338,10 @@ def main():
                     state.client.send_message(f_det.address, float(f_det.current_val))
 
             # --- Rendering UI ---
-            sidebar_col_w = 260
-            sidebar = np.zeros((h, sidebar_col_w * 3, 3), dtype=np.uint8)
-            y_start, y_step, rows_per_col = 20, 15, 30
+            sidebar_col_w = 320
+            canvas_h = max(h, 500)
+            sidebar = np.zeros((canvas_h, sidebar_col_w * 3, 3), dtype=np.uint8)
+            y_start, y_step, rows_per_col = 20, 15, 31
 
             for i, f in enumerate(state.features):
                 col, row = i // rows_per_col, i % rows_per_col
@@ -350,15 +351,19 @@ def main():
                 if f.enabled:
                     cv2.rectangle(sidebar, (tx+2, ty-cb_size+2), (tx+cb_size-2, ty-2), (0,255,0), -1)
                 f.ui_rect = [w + tx, ty-cb_size, w + tx + sidebar_col_w, ty+5]
-                cv2.putText(sidebar, f.name[:20], (tx+15, ty), cv2.FONT_HERSHEY_SIMPLEX, 0.35, (255, 255, 255), 1)
+                cv2.putText(sidebar, f.name[:40], (tx+15, ty), cv2.FONT_HERSHEY_SIMPLEX, 0.35, (255, 255, 255), 1)
                 if not f.is_complex:
-                    bar_max_w = sidebar_col_w - 130
+                    bar_max_w = sidebar_col_w - 170
                     bar_w = int(min(1.0, abs(f.current_val/f.max_v)) * bar_max_w) if f.max_v != 0 else 0
                     color = (255,100,100) if i < 6 else (0,255,0)
-                    cv2.rectangle(sidebar, (tx+120, ty-8), (tx+120+bar_w, ty), color, -1)
+                    cv2.rectangle(sidebar, (tx+160, ty-8), (tx+160+bar_w, ty), color, -1)
                 else:
-                    cv2.putText(sidebar, "[Complex Data]", (tx+120, ty), cv2.FONT_HERSHEY_SIMPLEX, 0.3, (100, 100, 100), 1)
+                    cv2.putText(sidebar, "[Complex Data]", (tx+160, ty), cv2.FONT_HERSHEY_SIMPLEX, 0.3, (100, 100, 100), 1)
 
+            # Ensure display_img matches sidebar height for hstack
+            if display_img.shape[0] < canvas_h:
+                padding = np.zeros((canvas_h - display_img.shape[0], display_img.shape[1], 3), dtype=np.uint8)
+                display_img = np.vstack((display_img, padding))
             cv2.imshow(win_name, np.hstack((display_img, sidebar)))
             key = cv2.waitKey(5) & 0xFF
             if key == 27: break # ESC
