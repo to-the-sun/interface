@@ -251,7 +251,7 @@ def main():
 
         win_name = 'Google MediaPipe'
         cv2.namedWindow(win_name, cv2.WINDOW_NORMAL)
-        cv2.resizeWindow(win_name, 1915, 500)
+        cv2.resizeWindow(win_name, 1600, 500)
         cv2.setMouseCallback(win_name, on_mouse)
 
         while cap.isOpened() and state.running:
@@ -338,7 +338,7 @@ def main():
                     state.client.send_message(f_det.address, float(f_det.current_val))
 
             # --- Rendering UI ---
-            sidebar_col_w = 425
+            sidebar_col_w = 320
             canvas_h = max(h, 500)
             sidebar = np.zeros((canvas_h, sidebar_col_w * 3, 3), dtype=np.uint8)
             y_start, y_step, rows_per_col = 20, 15, 31
@@ -353,12 +353,12 @@ def main():
                 f.ui_rect = [w + tx, ty-cb_size, w + tx + sidebar_col_w, ty+5]
                 cv2.putText(sidebar, f.name[:40], (tx+15, ty), cv2.FONT_HERSHEY_SIMPLEX, 0.35, (255, 255, 255), 1)
                 if not f.is_complex:
-                    bar_max_w = sidebar_col_w - 130
+                    bar_max_w = sidebar_col_w - 170
                     bar_w = int(min(1.0, abs(f.current_val/f.max_v)) * bar_max_w) if f.max_v != 0 else 0
                     color = (255,100,100) if i < 6 else (0,255,0)
-                    cv2.rectangle(sidebar, (tx+120, ty-8), (tx+120+bar_w, ty), color, -1)
+                    cv2.rectangle(sidebar, (tx+160, ty-8), (tx+160+bar_w, ty), color, -1)
                 else:
-                    cv2.putText(sidebar, "[Complex Data]", (tx+120, ty), cv2.FONT_HERSHEY_SIMPLEX, 0.3, (100, 100, 100), 1)
+                    cv2.putText(sidebar, "[Complex Data]", (tx+160, ty), cv2.FONT_HERSHEY_SIMPLEX, 0.3, (100, 100, 100), 1)
 
             # Ensure display_img matches sidebar height for hstack
             if display_img.shape[0] < canvas_h:
