@@ -341,7 +341,7 @@ def main():
             sidebar_col_w = 425
             canvas_h = max(h, 500)
             sidebar = np.zeros((canvas_h, sidebar_col_w * 3, 3), dtype=np.uint8)
-            y_start, y_step, rows_per_col = 20, 15, 30
+            y_start, y_step, rows_per_col = 20, 15, 31
 
             for i, f in enumerate(state.features):
                 col, row = i // rows_per_col, i % rows_per_col
