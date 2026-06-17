@@ -253,7 +253,10 @@ def main():
             bome_path = r"C:\Program Files (x86)\Bome MIDI Translator Pro\MIDITranslator.exe"
             if os.path.exists(bome_path):
                 print(f"Starting Bome MIDI Translator Pro: {bome_path}")
-                subprocess.Popen([bome_path])
+                try:
+                    os.startfile(bome_path, 'runas')
+                except Exception as e:
+                    print(f"Failed to start Bome MIDI Translator Pro: {e}")
 
         win_name = 'Google MediaPipe'
         cv2.namedWindow(win_name, cv2.WINDOW_NORMAL)
