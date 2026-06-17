@@ -1,4 +1,5 @@
 import cv2
+import ctypes
 import mediapipe as mp
 import numpy as np
 from pythonosc import udp_client
@@ -253,6 +254,12 @@ def main():
         cv2.namedWindow(win_name, cv2.WINDOW_NORMAL)
         cv2.resizeWindow(win_name, 1600, 500)
         cv2.setMouseCallback(win_name, on_mouse)
+
+        # Start minimized on Windows
+        if sys.platform == "win32":
+            hwnd = ctypes.windll.user32.FindWindowW(None, win_name)
+            if hwnd:
+                ctypes.windll.user32.ShowWindow(hwnd, 6)  # 6 = SW_MINIMIZE
 
         while cap.isOpened() and state.running:
             if state.detector_dirty:
