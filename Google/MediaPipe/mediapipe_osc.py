@@ -249,6 +249,12 @@ def main():
 
         print(f"Camera Initialized: {int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))}x{int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))} @ {int(cap.get(cv2.CAP_PROP_FPS))} FPS")
 
+        if sys.platform == "win32":
+            bome_path = r"C:\Program Files (x86)\Bome MIDI Translator Pro\MIDITranslator.exe"
+            if os.path.exists(bome_path):
+                print(f"Starting Bome MIDI Translator Pro: {bome_path}")
+                subprocess.Popen([bome_path])
+
         win_name = 'Google MediaPipe'
         cv2.namedWindow(win_name, cv2.WINDOW_NORMAL)
         cv2.resizeWindow(win_name, 1600, 500)
