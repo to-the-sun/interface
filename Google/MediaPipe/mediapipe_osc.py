@@ -257,9 +257,14 @@ def main():
 
         # Start minimized on Windows
         if sys.platform == "win32":
+            # Minimize UI window
             hwnd = ctypes.windll.user32.FindWindowW(None, win_name)
             if hwnd:
                 ctypes.windll.user32.ShowWindow(hwnd, 6)  # 6 = SW_MINIMIZE
+            # Minimize Console window
+            console_hwnd = ctypes.windll.kernel32.GetConsoleWindow()
+            if console_hwnd:
+                ctypes.windll.user32.ShowWindow(console_hwnd, 6)
 
         while cap.isOpened() and state.running:
             if state.detector_dirty:
