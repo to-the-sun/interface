@@ -1,0 +1,29 @@
+{
+  "manifest_version": 3,
+  "name": "Discord Bottom-Left Ad Blocker",
+  "version": "1.0.0",
+  "description": "Blocks intrusive advertisements, Quests, Nitro upsells, and promo popups in the bottom-left corner of Discord.",
+  "permissions": [
+    "storage"
+  ],
+  "host_permissions": [
+    "https://discord.com/*",
+    "https://*.discord.com/*"
+  ],
+  "action": {
+    "default_popup": "popup.html",
+    "default_title": "Discord Bottom-Left Ad Blocker"
+  },
+  "content_scripts": [
+    {
+      "matches": [
+        "https://discord.com/*",
+        "https://*.discord.com/*"
+      ],
+      "js": [
+        "content.js"
+      ],
+      "run_at": "document_start"
+    }
+  ]
+}
