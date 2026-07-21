@@ -197,7 +197,7 @@ function setupObserver() {
 
     let matchesAd = false;
 
-    // 1. Explicit Selector Match
+    // 1. Explicit Selector Match (Quests, Nitro Upsells, and Promotions specifically)
     if (config.blockQuests && containsQuest(el)) {
       matchesAd = true;
     }
