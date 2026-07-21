@@ -13,42 +13,47 @@
 (function() {
   'use strict';
 
-  // Refined CSS selectors to avoid collision with "request" (Friend/Message Requests) and "question" (Help/FAQ)
+  // Refined CSS selectors to avoid collision with "request" (Friend/Message Requests) and "question" (Help/FAQ Menu)
   const QUEST_SELECTOR = `[class*="quest" i]:not([class*="request" i]):not([class*="question" i])`;
 
-  // Default CSS Rules targeting all kinds of promotional elements (using modern, case-insensitive, and :has() selectors)
+  // Default CSS Rules targeting all kinds of promotional elements (using modern, case-insensitive, and scoped :has() selectors)
   const DEFAULT_CSS = `
-    /* Block Discord Quests & Quest Banners globally (case-insensitive, excluding request/question) */
-    ${QUEST_SELECTOR} {
+    /* Block Discord Quests & Quest Banners in specific sections only */
+    [class*="sidebar_"] ${QUEST_SELECTOR},
+    [class*="panels_"] ${QUEST_SELECTOR},
+    [data-list-item-id*="quest" i]:not([data-list-item-id*="request" i]),
+    [aria-label*="quest" i]:not([aria-label*="request" i]):not([aria-label*="question" i]),
+    div[class*="questsContainer_"],
+    div[class*="questsButton_"],
+    div[aria-label="Quests"] {
       display: none !important;
     }
 
-    /* Block Nitro Promotions & Send Gift buttons in chat/panels */
+    /* Block Nitro Promotions & Send Gift buttons in specific user/chat areas */
+    [class*="sidebar_"] [class*="upsell" i],
+    [class*="panels_"] [class*="upsell" i],
+    [class*="sidebar_"] [class*="premiumSubscribe" i],
+    [class*="panels_"] [class*="premiumSubscribe" i],
     button[aria-label*="gift" i],
     a[data-list-item-id$="___nitro" i],
-    a[data-list-item-id*="shop" i],
-    [class*="upsell" i],
-    [class*="premiumSubscribeButton" i] {
+    a[data-list-item-id*="shop" i] {
       display: none !important;
     }
 
     /* Block promotional banners and cards within panels */
-    div[class*="promotions" i],
-    div[class*="promo" i] {
+    [class*="panels_"] div[class*="promotions" i],
+    [class*="panels_"] div[class*="promo" i] {
       display: none !important;
     }
 
-    /* Hide any tooltip, layer, or popout wrapper that contains a quest, promo, or upsell element */
-    [class*="layer_"]:has(${QUEST_SELECTOR}),
-    [class*="layer_"]:has([class*="promo" i]),
-    [class*="layer_"]:has([class*="upsell" i]),
+    /* Hide any tooltip, popout, or callout wrapper that contains a quest, promo, or upsell element */
     [class*="tooltip_"]:has(${QUEST_SELECTOR}),
     [class*="tooltip_"]:has([class*="promo" i]),
     [class*="tooltip_"]:has([class*="upsell" i]),
     [class*="popout_"]:has(${QUEST_SELECTOR}),
     [class*="popout_"]:has([class*="promo" i]),
     [class*="popout_"]:has([class*="upsell" i]),
-    div[class*="overlayBackground_"]:has(div[class*="premiumSubscribeButton" i]),
+    div[class*="overlayBackground_"]:has([class*="premiumSubscribe" i]),
     div[class*="overlayBackground_"]:has(div[class*="contentText_"] > a[role="button"]) {
       display: none !important;
     }
@@ -285,10 +290,15 @@
     if (!config.blockQuests) {
       // Deactivate quest rules
       css += `
-        ${QUEST_SELECTOR} {
+        [class*="sidebar_"] ${QUEST_SELECTOR},
+        [class*="panels_"] ${QUEST_SELECTOR},
+        [data-list-item-id*="quest" i]:not([data-list-item-id*="request" i]),
+        [aria-label*="quest" i]:not([aria-label*="request" i]):not([aria-label*="question" i]),
+        div[class*="questsContainer_"],
+        div[class*="questsButton_"],
+        div[aria-label="Quests"] {
           display: block !important;
         }
-        [class*="layer_"]:has(${QUEST_SELECTOR}),
         [class*="tooltip_"]:has(${QUEST_SELECTOR}),
         [class*="popout_"]:has(${QUEST_SELECTOR}) {
           display: block !important;
@@ -298,11 +308,13 @@
     if (!config.blockNitro) {
       // Deactivate nitro rules
       css += `
+        [class*="sidebar_"] [class*="upsell" i],
+        [class*="panels_"] [class*="upsell" i],
+        [class*="sidebar_"] [class*="premiumSubscribe" i],
+        [class*="panels_"] [class*="premiumSubscribe" i],
         button[aria-label*="gift" i],
         a[data-list-item-id$="___nitro" i],
-        a[data-list-item-id*="shop" i],
-        [class*="upsell" i],
-        [class*="premiumSubscribeButton" i] {
+        a[data-list-item-id*="shop" i] {
           display: flex !important;
         }
       `;
@@ -322,41 +334,6 @@
     if (statsVal) {
       statsVal.textContent = config.blockedCount.toLocaleString();
     }
-  }
-
-  // Helper to determine if a panel inside div[class*="panels_"] is a legitimate UI element
-  function isLegitimatePanel(el) {
-    if (!el) return false;
-
-    // 1. Check User Profile Panel: contains settings button + mute/deafen button
-    const hasSettings = el.querySelector && el.querySelector('button[aria-label*="settings" i]');
-    const hasMute = el.querySelector && el.querySelector('button[aria-label*="mute" i]');
-    const hasDeafen = el.querySelector && el.querySelector('button[aria-label*="deafen" i]');
-    if (hasSettings && (hasMute || hasDeafen)) {
-      return true; // Legitimate Profile Panel
-    }
-
-    // 2. Check RTC/Voice Connection Panel: contains connection status text or a disconnect button
-    const hasDisconnect = el.querySelector && el.querySelector('button[aria-label*="disconnect" i]');
-    const hasConnectionStatus = el.textContent && (
-      el.textContent.includes('Voice Connected') ||
-      el.textContent.includes('RTC Connecting') ||
-      el.textContent.includes('No Route')
-    );
-    if (hasDisconnect || hasConnectionStatus) {
-      return true; // Legitimate RTC Panel
-    }
-
-    // 3. Check Game Activity/Streaming Panel: contains stream/screen share controls
-    const hasActivityControls = el.querySelector && (
-      el.querySelector('button[aria-label*="stream" i]') ||
-      el.querySelector('button[aria-label*="screen" i]')
-    );
-    if (hasActivityControls) {
-      return true; // Legitimate Activity Panel
-    }
-
-    return false;
   }
 
   // Heuristic Ad Detection and MutationObserver
@@ -409,21 +386,8 @@
         matchesAd = true;
       }
 
-      // 2. Bottom-left panels container heuristic
-      const isInsidePanels = el.closest && el.closest('div[class*="panels_"]');
-      if (!matchesAd && isInsidePanels) {
-        let directChildInPanels = el;
-        while (directChildInPanels.parentElement && !directChildInPanels.parentElement.matches('div[class*="panels_"]')) {
-          directChildInPanels = directChildInPanels.parentElement;
-        }
-
-        if (directChildInPanels && directChildInPanels.tagName === 'DIV' && !isLegitimatePanel(directChildInPanels)) {
-          matchesAd = true;
-        }
-      }
-
-      // 3. Absolute layers / popups near bottom-left
-      if (!matchesAd && config.blockPopups && el.matches && (el.matches('[class*="layer_"]') || el.matches('[class*="tooltip_"]') || el.matches('[class*="popout_"]'))) {
+      // 2. Absolute layers / popups near bottom-left
+      if (!matchesAd && config.blockPopups && el.matches && (el.matches('[class*="tooltip_"]') || el.matches('[class*="popout_"]'))) {
         const text = (el.textContent || '').toLowerCase();
         const hasCollidingKeyword = text.includes('request') || text.includes('question');
 
@@ -446,7 +410,12 @@
                 if (el.setAttribute) {
                   el.setAttribute('data-discord-adblocker-blocked', 'true');
                 }
-                incrementBlockedCount();
+
+                // Over-counting fix: Only increment stats count if this is the top-most blocked element in this subtree
+                const isAncestorAlreadyBlocked = el.parentElement && el.parentElement.closest('[data-discord-adblocker-blocked="true"]');
+                if (!isAncestorAlreadyBlocked) {
+                  incrementBlockedCount();
+                }
               }
             });
             return; // Skip synchronous handling since it's deferred to RAF
@@ -461,12 +430,17 @@
         if (el.setAttribute) {
           el.setAttribute('data-discord-adblocker-blocked', 'true');
         }
-        incrementBlockedCount();
+
+        // Over-counting fix: Only increment stats count if this is the top-most blocked element in this subtree
+        const isAncestorAlreadyBlocked = el.parentElement && el.parentElement.closest('[data-discord-adblocker-blocked="true"]');
+        if (!isAncestorAlreadyBlocked) {
+          incrementBlockedCount();
+        }
       }
     }
 
     // Initial Scan
-    document.querySelectorAll(`${QUEST_SELECTOR}, [class*="promo" i], [class*="upsell" i]`).forEach(checkAndMarkAd);
+    document.querySelectorAll(`${QUEST_SELECTOR}, [class*="promo" i], [class*="upsell" i]').forEach(checkAndMarkAd);
 
     // Set up MutationObserver to watch for additions
     const observer = new MutationObserver((mutations) => {
