@@ -24,7 +24,21 @@ import threading
 import traceback
 
 def run_script():
-    # Import mido and other requirements inside to ensure any import error is caught by our top-level handler
+    # Detect the python-rtmidi vs rtmidi package conflict before importing mido
+    try:
+        import rtmidi
+        if not hasattr(rtmidi, 'API_UNSPECIFIED'):
+            raise ImportError(
+                "The incorrect 'rtmidi' package is installed instead of the correct 'python-rtmidi' package.\n"
+                "This namespace conflict causes 'mido' to fail with an AttributeError.\n\n"
+                "To resolve this issue, please close this window and run the following commands in your command prompt/terminal:\n"
+                "  pip uninstall rtmidi\n"
+                "  pip install python-rtmidi"
+            )
+    except ImportError as e:
+        # If rtmidi isn't installed at all, mido will fail below anyway, which is caught correctly
+        pass
+
     try:
         import mido
     except ImportError as e:
