@@ -312,6 +312,16 @@ def run_script():
     if not args.no_elevate:
         elevate_privileges()
 
+    # Start minimized on Windows
+    if sys.platform == "win32":
+        try:
+            import ctypes
+            console_hwnd = ctypes.windll.kernel32.GetConsoleWindow()
+            if console_hwnd:
+                ctypes.windll.user32.ShowWindow(console_hwnd, 6)  # 6 = SW_MINIMIZE
+        except Exception as e:
+            print(f"[*] Failed to minimize console window: {e}")
+
     # Initialize Controller Instances
     mouse = MouseController()
     keyboard = KeyboardController()

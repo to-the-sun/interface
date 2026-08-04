@@ -13,13 +13,22 @@ sys.modules['numpy'] = MagicMock()
 sys.modules['pythonosc'] = MagicMock()
 sys.modules['pythonosc.udp_client'] = MagicMock()
 
-# Mock ctypes before importing the module
-mock_ctypes = MagicMock()
-sys.modules['ctypes'] = mock_ctypes
+# Setup/Get the ctypes mock from sys.modules if it exists
+if 'ctypes' in sys.modules:
+    mock_ctypes = sys.modules['ctypes']
+    if not isinstance(mock_ctypes, MagicMock):
+        mock_ctypes = MagicMock()
+        sys.modules['ctypes'] = mock_ctypes
+else:
+    mock_ctypes = MagicMock()
+    sys.modules['ctypes'] = mock_ctypes
 
 import Google.MediaPipe.mediapipe_osc as mediapipe_osc
 
 class TestWindowMinimization(unittest.TestCase):
+    def setUp(self):
+        mock_ctypes.reset_mock()
+
     @patch('sys.platform', 'win32')
     @patch('cv2.VideoCapture')
     @patch('cv2.namedWindow')
