@@ -15,13 +15,35 @@
 
   // Default CSS Rules targeting all kinds of promotional elements
   const DEFAULT_CSS = `
-    /* Block Discord Quests & Quest Banners in sidebar/panels */
+    /* Block Outer Quest Cards & Panels in bottom-left area */
+    div[class*="panels_"] > div:has([class*="quest" i]),
+    div[class*="panels_"] > div:has([aria-label*="Quest" i]),
+    div[class*="panels_"] > div:has(a[href*="/quests"]),
+    div[class*="activityPanel_"]:has([class*="quest" i]),
+    div[class*="activityPanel_"]:has([aria-label*="Quest" i]),
     .quests-container,
     .quest-promo-banner,
     .quest-progress-bar,
-    [class*="quest" i]:not([class*="request" i]):not([class*="question" i]),
+    [class*="questsContainer"],
+    [class*="questsCard"],
+    [class*="questsWrapper"],
+    [class*="questTile"],
+    [class*="questBar"],
+    [class*="questCard"],
+    [class*="questPanel"],
+    [class*="questBanner"],
+    [class*="questButton"],
+    [class*="questsButton"],
+    [class*="questBody"],
+    [class*="questReward"],
+    [class*="questPrompt"],
+    [class*="questNotice"],
+    [class*="questEmbed"],
+    [class*="quest_"],
+    [class*="quests_"],
+    [class*="quest-"],
+    [class*="quests-"],
     [data-list-item-id*="quest" i]:not([data-list-item-id*="request" i]):not([data-list-item-id*="question" i]),
-    [aria-label*="quest" i]:not([aria-label*="request" i]):not([aria-label*="question" i]),
     div[aria-label="Quests"] {
       display: none !important;
     }
@@ -244,7 +266,6 @@
         const parsed = JSON.parse(saved);
         config = { ...config, ...parsed };
       }
-      // Also fetch stats counter
       const savedCount = localStorage.getItem('discord_adblocker_count');
       if (savedCount) {
         config.blockedCount = parseInt(savedCount, 10) || 0;
@@ -276,21 +297,41 @@
 
     let css = DEFAULT_CSS;
     if (!config.blockQuests) {
-      // Unhide quest elements when quest blocking is turned off
       css += `
+        div[class*="panels_"] > div:has([class*="quest" i]),
+        div[class*="panels_"] > div:has([aria-label*="Quest" i]),
+        div[class*="panels_"] > div:has(a[href*="/quests"]),
+        div[class*="activityPanel_"]:has([class*="quest" i]),
+        div[class*="activityPanel_"]:has([aria-label*="Quest" i]),
         .quests-container,
         .quest-promo-banner,
         .quest-progress-bar,
-        [class*="quest" i]:not([class*="request" i]):not([class*="question" i]),
+        [class*="questsContainer"],
+        [class*="questsCard"],
+        [class*="questsWrapper"],
+        [class*="questTile"],
+        [class*="questBar"],
+        [class*="questCard"],
+        [class*="questPanel"],
+        [class*="questBanner"],
+        [class*="questButton"],
+        [class*="questsButton"],
+        [class*="questBody"],
+        [class*="questReward"],
+        [class*="questPrompt"],
+        [class*="questNotice"],
+        [class*="questEmbed"],
+        [class*="quest_"],
+        [class*="quests_"],
+        [class*="quest-"],
+        [class*="quests-"],
         [data-list-item-id*="quest" i]:not([data-list-item-id*="request" i]):not([data-list-item-id*="question" i]),
-        [aria-label*="quest" i]:not([aria-label*="request" i]):not([aria-label*="question" i]),
         div[aria-label="Quests"] {
           display: inherit !important;
         }
       `;
     }
     if (!config.blockNitro) {
-      // Unhide nitro elements when nitro blocking is turned off
       css += `
         button[aria-label="Send a gift"],
         a[data-list-item-id$="___nitro"],
@@ -309,22 +350,43 @@
   function incrementBlockedCount() {
     config.blockedCount++;
     saveConfig();
-    // Update active UI elements if open
     const statsVal = document.getElementById('adblocker-modal-stats-val');
     if (statsVal) {
       statsVal.textContent = config.blockedCount.toLocaleString();
     }
   }
 
-  // Heuristic Ad Detection and MutationObserver
+  // Targeted Ad Detection and MutationObserver
   function setupObserver() {
     const questSelectors = [
+      'div[class*="panels_"] > div:has([class*="quest" i])',
+      'div[class*="panels_"] > div:has([aria-label*="Quest" i])',
+      'div[class*="panels_"] > div:has(a[href*="/quests"])',
+      'div[class*="activityPanel_"]:has([class*="quest" i])',
+      'div[class*="activityPanel_"]:has([aria-label*="Quest" i])',
       '.quests-container',
       '.quest-promo-banner',
       '.quest-progress-bar',
-      '[class*="quest" i]:not([class*="request" i]):not([class*="question" i])',
+      '[class*="questsContainer"]',
+      '[class*="questsCard"]',
+      '[class*="questsWrapper"]',
+      '[class*="questTile"]',
+      '[class*="questBar"]',
+      '[class*="questCard"]',
+      '[class*="questPanel"]',
+      '[class*="questBanner"]',
+      '[class*="questButton"]',
+      '[class*="questsButton"]',
+      '[class*="questBody"]',
+      '[class*="questReward"]',
+      '[class*="questPrompt"]',
+      '[class*="questNotice"]',
+      '[class*="questEmbed"]',
+      '[class*="quest_"]',
+      '[class*="quests_"]',
+      '[class*="quest-"]',
+      '[class*="quests-"]',
       '[data-list-item-id*="quest" i]:not([data-list-item-id*="request" i]):not([data-list-item-id*="question" i])',
-      '[aria-label*="quest" i]:not([aria-label*="request" i]):not([aria-label*="question" i])',
       'div[aria-label="Quests"]'
     ];
 
@@ -384,7 +446,7 @@
         }
       }
 
-      // Heuristic: Coordinate-based popups
+      // Coordinate-based popups
       if (!matchesAd && config.blockPopups && el.matches && (el.matches('[class*="layer_"]') || el.matches('[class*="tooltip_"]') || el.matches('[class*="popout_"]'))) {
         const text = (el.textContent || '').toLowerCase();
         const hasPromoKeyword = text.includes('quest') || text.includes('nitro') || text.includes('shop') || text.includes('gift') || text.includes('promotion') || text.includes('subscribe');
@@ -449,15 +511,12 @@
   function tryInjectWidgetButton(rootNode) {
     if (document.getElementById('discord-adblocker-btn')) return;
 
-    // The user profile panel usually has buttons (mute, deafen, settings)
-    // We look for a button with aria-label="User Settings"
     const settingsBtn = (rootNode && rootNode.querySelector) ? rootNode.querySelector('button[aria-label="User Settings"]') : document.querySelector('button[aria-label="User Settings"]');
     if (!settingsBtn) return;
 
     const btnGroup = settingsBtn.parentElement;
     if (!btnGroup) return;
 
-    // Create our elegant shield/adblocker button
     const widgetBtn = document.createElement('button');
     widgetBtn.id = 'discord-adblocker-btn';
     widgetBtn.className = 'adblocker-widget-btn';
@@ -469,17 +528,15 @@
       </svg>
     `;
 
-    // Click handler to open settings modal
     widgetBtn.addEventListener('click', (e) => {
       e.stopPropagation();
       openSettingsModal();
     });
 
-    // Insert next to the User Settings gear button
     btnGroup.insertBefore(widgetBtn, settingsBtn);
   }
 
-  // Beautiful Modal Overlay for Userscript
+  // Modal Overlay for Userscript
   function openSettingsModal() {
     if (document.getElementById('adblocker-modal-overlay')) return;
 
@@ -554,7 +611,6 @@
 
     document.body.appendChild(overlay);
 
-    // Event handlers
     const closeBtn = document.getElementById('adblocker-modal-close-btn');
     const resetBtn = document.getElementById('adblocker-modal-reset');
     const toggleEnable = document.getElementById('adblocker-toggle-enable');
@@ -616,7 +672,6 @@
     });
   }
 
-  // Initialize observer and try button injection
   if (document.readyState === 'loading') {
     document.addEventListener('DOMContentLoaded', () => {
       setupObserver();

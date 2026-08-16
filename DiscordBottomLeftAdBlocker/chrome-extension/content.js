@@ -1,16 +1,38 @@
 // Discord Bottom-Left Ad Blocker Content Script
-// This script runs at document_start to inject styles instantly (preventing flicker)
-// and sets up a MutationObserver to catch and count dynamic promotional elements.
+// Injects styles instantly at document_start to prevent flicker and uses MutationObserver
+// to dynamically catch and hide promotional elements and popups.
 
 // Default stylesheet targeting ads, quests, and promotional elements
 const DEFAULT_CSS = `
-  /* Block Discord Quests & Quest Banners in sidebar/panels */
+  /* Block Outer Quest Cards & Panels in bottom-left area */
+  div[class*="panels_"] > div:has([class*="quest" i]),
+  div[class*="panels_"] > div:has([aria-label*="Quest" i]),
+  div[class*="panels_"] > div:has(a[href*="/quests"]),
+  div[class*="activityPanel_"]:has([class*="quest" i]),
+  div[class*="activityPanel_"]:has([aria-label*="Quest" i]),
   .quests-container,
   .quest-promo-banner,
   .quest-progress-bar,
-  [class*="quest" i]:not([class*="request" i]):not([class*="question" i]),
+  [class*="questsContainer"],
+  [class*="questsCard"],
+  [class*="questsWrapper"],
+  [class*="questTile"],
+  [class*="questBar"],
+  [class*="questCard"],
+  [class*="questPanel"],
+  [class*="questBanner"],
+  [class*="questButton"],
+  [class*="questsButton"],
+  [class*="questBody"],
+  [class*="questReward"],
+  [class*="questPrompt"],
+  [class*="questNotice"],
+  [class*="questEmbed"],
+  [class*="quest_"],
+  [class*="quests_"],
+  [class*="quest-"],
+  [class*="quests-"],
   [data-list-item-id*="quest" i]:not([data-list-item-id*="request" i]):not([data-list-item-id*="question" i]),
-  [aria-label*="quest" i]:not([aria-label*="request" i]):not([aria-label*="question" i]),
   div[aria-label="Quests"] {
     display: none !important;
   }
@@ -41,7 +63,6 @@ function injectStyles(css) {
   const style = document.createElement('style');
   style.id = 'discord-adblocker-static-style';
   style.textContent = css;
-  // Append to documentElement because document.head might not be ready at document_start
   (document.head || document.documentElement).appendChild(style);
 }
 
@@ -59,7 +80,6 @@ let config = {
 // Retrieve configuration and apply refinements if needed
 if (typeof chrome !== 'undefined' && chrome.storage && chrome.storage.local) {
   chrome.storage.local.get(['enabled', 'blockQuests', 'blockNitro', 'blockPopups'], (res) => {
-    // Update config with stored values
     if (res.enabled !== undefined) config.enabled = res.enabled;
     if (res.blockQuests !== undefined) config.blockQuests = res.blockQuests;
     if (res.blockNitro !== undefined) config.blockNitro = res.blockNitro;
@@ -81,12 +101,34 @@ function applyConfig() {
   let css = '';
   if (config.blockQuests) {
     css += `
+      div[class*="panels_"] > div:has([class*="quest" i]),
+      div[class*="panels_"] > div:has([aria-label*="Quest" i]),
+      div[class*="panels_"] > div:has(a[href*="/quests"]),
+      div[class*="activityPanel_"]:has([class*="quest" i]),
+      div[class*="activityPanel_"]:has([aria-label*="Quest" i]),
       .quests-container,
       .quest-promo-banner,
       .quest-progress-bar,
-      [class*="quest" i]:not([class*="request" i]):not([class*="question" i]),
+      [class*="questsContainer"],
+      [class*="questsCard"],
+      [class*="questsWrapper"],
+      [class*="questTile"],
+      [class*="questBar"],
+      [class*="questCard"],
+      [class*="questPanel"],
+      [class*="questBanner"],
+      [class*="questButton"],
+      [class*="questsButton"],
+      [class*="questBody"],
+      [class*="questReward"],
+      [class*="questPrompt"],
+      [class*="questNotice"],
+      [class*="questEmbed"],
+      [class*="quest_"],
+      [class*="quests_"],
+      [class*="quest-"],
+      [class*="quests-"],
       [data-list-item-id*="quest" i]:not([data-list-item-id*="request" i]):not([data-list-item-id*="question" i]),
-      [aria-label*="quest" i]:not([aria-label*="request" i]):not([aria-label*="question" i]),
       div[aria-label="Quests"] {
         display: none !important;
       }
@@ -123,22 +165,42 @@ function incrementBlockedCount() {
       chrome.storage.local.set({ blockedCount: current + 1 });
     });
   } else {
-    // Fallback for Tampermonkey or environment without chrome storage
     let current = parseInt(localStorage.getItem('discord_adblocker_count') || '0', 10);
     localStorage.setItem('discord_adblocker_count', (current + 1).toString());
   }
 }
 
-// Heuristic Ad Detector and MutationObserver
+// Targeted Ad Detector and MutationObserver
 function setupObserver() {
-  // Categorized selectors for targeted heuristic evaluation
   const questSelectors = [
+    'div[class*="panels_"] > div:has([class*="quest" i])',
+    'div[class*="panels_"] > div:has([aria-label*="Quest" i])',
+    'div[class*="panels_"] > div:has(a[href*="/quests"])',
+    'div[class*="activityPanel_"]:has([class*="quest" i])',
+    'div[class*="activityPanel_"]:has([aria-label*="Quest" i])',
     '.quests-container',
     '.quest-promo-banner',
     '.quest-progress-bar',
-    '[class*="quest" i]:not([class*="request" i]):not([class*="question" i])',
+    '[class*="questsContainer"]',
+    '[class*="questsCard"]',
+    '[class*="questsWrapper"]',
+    '[class*="questTile"]',
+    '[class*="questBar"]',
+    '[class*="questCard"]',
+    '[class*="questPanel"]',
+    '[class*="questBanner"]',
+    '[class*="questButton"]',
+    '[class*="questsButton"]',
+    '[class*="questBody"]',
+    '[class*="questReward"]',
+    '[class*="questPrompt"]',
+    '[class*="questNotice"]',
+    '[class*="questEmbed"]',
+    '[class*="quest_"]',
+    '[class*="quests_"]',
+    '[class*="quest-"]',
+    '[class*="quests-"]',
     '[data-list-item-id*="quest" i]:not([data-list-item-id*="request" i]):not([data-list-item-id*="question" i])',
-    '[aria-label*="quest" i]:not([aria-label*="request" i]):not([aria-label*="question" i])',
     'div[aria-label="Quests"]'
   ];
 
@@ -199,13 +261,12 @@ function setupObserver() {
       }
     }
 
-    // Heuristic: Coordinate-based and keyword-based popup/tooltip/callout detection
+    // Coordinate-based and keyword-based popup/tooltip/callout detection
     if (!matchesAd && config.blockPopups && el.matches && (el.matches('[class*="layer_"]') || el.matches('[class*="tooltip_"]') || el.matches('[class*="popout_"]'))) {
       const text = (el.textContent || '').toLowerCase();
       const hasPromoKeyword = text.includes('quest') || text.includes('nitro') || text.includes('shop') || text.includes('gift') || text.includes('promotion') || text.includes('subscribe');
 
       if (hasPromoKeyword) {
-        // Check if the popup is positioned near the bottom-left panel
         const rect = el.getBoundingClientRect();
         const isBottomLeft = rect.left < 360 && rect.top > (window.innerHeight - 350);
         if (isBottomLeft) {
@@ -215,7 +276,6 @@ function setupObserver() {
     }
 
     if (matchesAd) {
-      // Mark as blocked, apply CSS to guarantee it is hidden, and increment counter
       if (el.style) {
         el.style.setProperty('display', 'none', 'important');
       }
@@ -242,9 +302,7 @@ function setupObserver() {
       if (mutation.addedNodes) {
         for (const node of mutation.addedNodes) {
           if (node.nodeType === Node.ELEMENT_NODE) {
-            // Check the node itself
             checkAndMarkAd(node);
-            // Check children of the node
             const activeSelectors = getActiveSelectors();
             if (activeSelectors.length > 0) {
               node.querySelectorAll(activeSelectors.join(',')).forEach(checkAndMarkAd);
