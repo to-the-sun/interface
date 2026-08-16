@@ -47,7 +47,7 @@ This project provides two distinct ways to block ads depending on your preferenc
 ### CSS Injection & Outer Container Targeting
 Static injection of display rules uses `:has()` parent selectors to collapse outer Quest card wrappers:
 ```css
-div[class*="panels_"] > div:has([class*="quest" i]):not(:has(button[aria-label="User Settings"])):not(:has([class*="avatar_"])),
+div[class*="panels_"] > *:has([class*="quest" i]):not(:has(button[aria-label="User Settings"])):not(:has([class*="avatar_"])),
 div[class*="activityPanel_"]:has([class*="quest" i]),
 .quests-container,
 .quest-promo-banner,
@@ -74,6 +74,6 @@ a[data-list-item-id*="shop"] {
 
 ### Heuristic Analysis
 The script watches DOM insertions via `MutationObserver` and dynamically flags promotional elements based on active user preferences:
-1. **Quest Elements & Outer Cards**: Leverages outer container `:has()` rules to collapse the entire Quest tile box so no empty rectangle or banner remains, while targeting specific developer-class prefixes (`questTile`, `questsContainer`, `questCard`, `quest_`) and using explicit user profile negation filters to avoid hiding main user panel components.
+1. **Quest Elements & Outer Cards**: Leverages direct child panel card scanner (`checkAndHideQuestPanels`) and `:has()` rules to collapse the entire Quest tile box so no squashed banner or brown tab remains, while targeting specific developer-class prefixes (`questTile`, `questsContainer`, `questCard`, `quest_`) and using explicit user profile negation filters to avoid hiding main user panel components.
 2. **Nitro & Shop Promotions**: Intercepts Nitro gift buttons, store link items, and premium subscription callouts.
 3. **Bottom-Left Popup Callouts**: Analyzes absolute-positioned tooltips and popouts rendered near the bottom-left corner (`left < 360` & `top > innerHeight - 350`) containing promotional keywords.
