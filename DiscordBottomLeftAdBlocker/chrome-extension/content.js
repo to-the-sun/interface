@@ -1,17 +1,38 @@
 // Discord Bottom-Left Ad Blocker Content Script
-// This script runs at document_start to inject styles instantly (preventing flicker)
-// and sets up a MutationObserver to catch and count dynamic promotional elements.
+// Injects styles instantly at document_start to prevent flicker and uses MutationObserver
+// to dynamically catch and hide promotional elements and popups.
 
 // Default stylesheet targeting ads, quests, and promotional elements
 const DEFAULT_CSS = `
-  /* Block Discord Quests & Quest Banners in sidebar/panels */
+  /* Block Outer Quest Cards & Panels in bottom-left area */
+  div[class*="panels_"] > div:has([class*="quest" i]),
+  div[class*="panels_"] > div:has([aria-label*="Quest" i]),
+  div[class*="panels_"] > div:has(a[href*="/quests"]),
+  div[class*="activityPanel_"]:has([class*="quest" i]),
+  div[class*="activityPanel_"]:has([aria-label*="Quest" i]),
   .quests-container,
   .quest-promo-banner,
   .quest-progress-bar,
-  [data-list-item-id*="quest"],
-  [aria-label*="quest"],
-  div[class*="questsButton_"],
-  div[class*="questsContainer_"],
+  [class*="questsContainer"],
+  [class*="questsCard"],
+  [class*="questsWrapper"],
+  [class*="questTile"],
+  [class*="questBar"],
+  [class*="questCard"],
+  [class*="questPanel"],
+  [class*="questBanner"],
+  [class*="questButton"],
+  [class*="questsButton"],
+  [class*="questBody"],
+  [class*="questReward"],
+  [class*="questPrompt"],
+  [class*="questNotice"],
+  [class*="questEmbed"],
+  [class*="quest_"],
+  [class*="quests_"],
+  [class*="quest-"],
+  [class*="quests-"],
+  [data-list-item-id*="quest" i]:not([data-list-item-id*="request" i]):not([data-list-item-id*="question" i]),
   div[aria-label="Quests"] {
     display: none !important;
   }
@@ -42,7 +63,6 @@ function injectStyles(css) {
   const style = document.createElement('style');
   style.id = 'discord-adblocker-static-style';
   style.textContent = css;
-  // Append to documentElement because document.head might not be ready at document_start
   (document.head || document.documentElement).appendChild(style);
 }
 
@@ -60,7 +80,6 @@ let config = {
 // Retrieve configuration and apply refinements if needed
 if (typeof chrome !== 'undefined' && chrome.storage && chrome.storage.local) {
   chrome.storage.local.get(['enabled', 'blockQuests', 'blockNitro', 'blockPopups'], (res) => {
-    // Update config with stored values
     if (res.enabled !== undefined) config.enabled = res.enabled;
     if (res.blockQuests !== undefined) config.blockQuests = res.blockQuests;
     if (res.blockNitro !== undefined) config.blockNitro = res.blockNitro;
@@ -82,13 +101,34 @@ function applyConfig() {
   let css = '';
   if (config.blockQuests) {
     css += `
+      div[class*="panels_"] > div:has([class*="quest" i]),
+      div[class*="panels_"] > div:has([aria-label*="Quest" i]),
+      div[class*="panels_"] > div:has(a[href*="/quests"]),
+      div[class*="activityPanel_"]:has([class*="quest" i]),
+      div[class*="activityPanel_"]:has([aria-label*="Quest" i]),
       .quests-container,
       .quest-promo-banner,
       .quest-progress-bar,
-      [data-list-item-id*="quest"],
-      [aria-label*="quest"],
-      div[class*="questsButton_"],
-      div[class*="questsContainer_"],
+      [class*="questsContainer"],
+      [class*="questsCard"],
+      [class*="questsWrapper"],
+      [class*="questTile"],
+      [class*="questBar"],
+      [class*="questCard"],
+      [class*="questPanel"],
+      [class*="questBanner"],
+      [class*="questButton"],
+      [class*="questsButton"],
+      [class*="questBody"],
+      [class*="questReward"],
+      [class*="questPrompt"],
+      [class*="questNotice"],
+      [class*="questEmbed"],
+      [class*="quest_"],
+      [class*="quests_"],
+      [class*="quest-"],
+      [class*="quests-"],
+      [data-list-item-id*="quest" i]:not([data-list-item-id*="request" i]):not([data-list-item-id*="question" i]),
       div[aria-label="Quests"] {
         display: none !important;
       }
@@ -125,61 +165,108 @@ function incrementBlockedCount() {
       chrome.storage.local.set({ blockedCount: current + 1 });
     });
   } else {
-    // Fallback for Tampermonkey or environment without chrome storage
     let current = parseInt(localStorage.getItem('discord_adblocker_count') || '0', 10);
     localStorage.setItem('discord_adblocker_count', (current + 1).toString());
   }
 }
 
-// Heuristic Ad Detector and MutationObserver
+// Targeted Ad Detector and MutationObserver
 function setupObserver() {
-  // Selectors to target for counting
-  const adSelectors = [
+  const questSelectors = [
+    'div[class*="panels_"] > div:has([class*="quest" i])',
+    'div[class*="panels_"] > div:has([aria-label*="Quest" i])',
+    'div[class*="panels_"] > div:has(a[href*="/quests"])',
+    'div[class*="activityPanel_"]:has([class*="quest" i])',
+    'div[class*="activityPanel_"]:has([aria-label*="Quest" i])',
     '.quests-container',
     '.quest-promo-banner',
-    'div[class*="questsContainer_"]',
-    'div[class*="questsButton_"]',
-    'div[aria-label="Quests"]',
-    'div[class*="promotions_"]',
-    'div[class*="promo_"]',
+    '.quest-progress-bar',
+    '[class*="questsContainer"]',
+    '[class*="questsCard"]',
+    '[class*="questsWrapper"]',
+    '[class*="questTile"]',
+    '[class*="questBar"]',
+    '[class*="questCard"]',
+    '[class*="questPanel"]',
+    '[class*="questBanner"]',
+    '[class*="questButton"]',
+    '[class*="questsButton"]',
+    '[class*="questBody"]',
+    '[class*="questReward"]',
+    '[class*="questPrompt"]',
+    '[class*="questNotice"]',
+    '[class*="questEmbed"]',
+    '[class*="quest_"]',
+    '[class*="quests_"]',
+    '[class*="quest-"]',
+    '[class*="quests-"]',
+    '[data-list-item-id*="quest" i]:not([data-list-item-id*="request" i]):not([data-list-item-id*="question" i])',
+    'div[aria-label="Quests"]'
+  ];
+
+  const nitroSelectors = [
     'button[aria-label="Send a gift"]',
     'a[data-list-item-id$="___nitro"]',
-    'a[data-list-item-id*="shop"]'
+    'a[data-list-item-id*="shop"]',
+    '[class*="premiumSubscribeButton_"]'
   ];
+
+  const promoSelectors = [
+    'div[class*="promotions_"]',
+    'div[class*="promo_"]'
+  ];
+
+  function getActiveSelectors() {
+    let selectors = [];
+    if (config.blockQuests) selectors = selectors.concat(questSelectors);
+    if (config.blockNitro) selectors = selectors.concat(nitroSelectors);
+    selectors = selectors.concat(promoSelectors);
+    return selectors;
+  }
 
   // Helper to check if an element is an ad and mark it
   function checkAndMarkAd(el) {
     if (!config.enabled) return;
     if (el.dataset && el.dataset.discordAdblockerBlocked === 'true') return;
 
-    // Check matches for explicit selectors
     let matchesAd = false;
-    for (const sel of adSelectors) {
-      if (el.matches && el.matches(sel)) {
-        matchesAd = true;
-        break;
+
+    // Check quest selectors if enabled
+    if (config.blockQuests) {
+      for (const sel of questSelectors) {
+        if (el.matches && el.matches(sel)) {
+          matchesAd = true;
+          break;
+        }
       }
     }
 
-    // Heuristic 1: Inspect bottom-left "panels" children
-    // Any child of [class*="panels_"] that is not Profile, RTC, or Activity Panel is an ad
-    if (!matchesAd && el.parentElement && el.parentElement.matches && el.parentElement.matches('div[class*="panels_"]')) {
-      const isProfile = el.matches('div[class*="container_"]') || el.querySelector('button[aria-label="User Settings"]');
-      const isRTC = el.matches('div[class*="rtcConnection_"]') || el.matches('div[class*="connection_"]');
-      const isActivity = el.matches('div[class*="activityPanel_"]');
-
-      if (!isProfile && !isRTC && !isActivity && el.tagName === 'DIV') {
-        matchesAd = true;
+    // Check nitro selectors if enabled
+    if (!matchesAd && config.blockNitro) {
+      for (const sel of nitroSelectors) {
+        if (el.matches && el.matches(sel)) {
+          matchesAd = true;
+          break;
+        }
       }
     }
 
-    // Heuristic 2: Coordinate-based and keyword-based popup/tooltip/callout detection
+    // Check general promo selectors
+    if (!matchesAd) {
+      for (const sel of promoSelectors) {
+        if (el.matches && el.matches(sel)) {
+          matchesAd = true;
+          break;
+        }
+      }
+    }
+
+    // Coordinate-based and keyword-based popup/tooltip/callout detection
     if (!matchesAd && config.blockPopups && el.matches && (el.matches('[class*="layer_"]') || el.matches('[class*="tooltip_"]') || el.matches('[class*="popout_"]'))) {
       const text = (el.textContent || '').toLowerCase();
       const hasPromoKeyword = text.includes('quest') || text.includes('nitro') || text.includes('shop') || text.includes('gift') || text.includes('promotion') || text.includes('subscribe');
 
       if (hasPromoKeyword) {
-        // Check if the popup is positioned near the bottom-left panel
         const rect = el.getBoundingClientRect();
         const isBottomLeft = rect.left < 360 && rect.top > (window.innerHeight - 350);
         if (isBottomLeft) {
@@ -189,7 +276,6 @@ function setupObserver() {
     }
 
     if (matchesAd) {
-      // Mark as blocked, apply CSS to guarantee it is hidden, and increment counter
       if (el.style) {
         el.style.setProperty('display', 'none', 'important');
       }
@@ -201,25 +287,25 @@ function setupObserver() {
   }
 
   // Scan existing DOM on load
-  document.querySelectorAll(adSelectors.join(',')).forEach(checkAndMarkAd);
+  const scanElements = () => {
+    const selectors = getActiveSelectors();
+    if (selectors.length > 0) {
+      document.querySelectorAll(selectors.join(',')).forEach(checkAndMarkAd);
+    }
+  };
+  scanElements();
 
-  // Monitor panels container specifically if available, otherwise fallback to entire document
+  // Monitor DOM changes for dynamic promotional elements
   const observer = new MutationObserver((mutations) => {
     if (!config.enabled) return;
     for (const mutation of mutations) {
       if (mutation.addedNodes) {
         for (const node of mutation.addedNodes) {
           if (node.nodeType === Node.ELEMENT_NODE) {
-            // Check the node itself
             checkAndMarkAd(node);
-            // Check children of the node
-            adSelectors.forEach(sel => {
-              node.querySelectorAll(sel).forEach(checkAndMarkAd);
-            });
-            // Check direct children of panels if the node is or contains panels container
-            const panels = node.matches && node.matches('div[class*="panels_"]') ? node : node.querySelector && node.querySelector('div[class*="panels_"]');
-            if (panels) {
-              Array.from(panels.children).forEach(checkAndMarkAd);
+            const activeSelectors = getActiveSelectors();
+            if (activeSelectors.length > 0) {
+              node.querySelectorAll(activeSelectors.join(',')).forEach(checkAndMarkAd);
             }
           }
         }

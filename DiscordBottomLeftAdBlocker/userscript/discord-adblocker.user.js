@@ -15,14 +15,35 @@
 
   // Default CSS Rules targeting all kinds of promotional elements
   const DEFAULT_CSS = `
-    /* Block Discord Quests & Quest Banners in sidebar/panels */
+    /* Block Outer Quest Cards & Panels in bottom-left area */
+    div[class*="panels_"] > div:has([class*="quest" i]),
+    div[class*="panels_"] > div:has([aria-label*="Quest" i]),
+    div[class*="panels_"] > div:has(a[href*="/quests"]),
+    div[class*="activityPanel_"]:has([class*="quest" i]),
+    div[class*="activityPanel_"]:has([aria-label*="Quest" i]),
     .quests-container,
     .quest-promo-banner,
     .quest-progress-bar,
-    [data-list-item-id*="quest"],
-    [aria-label*="quest"],
-    div[class*="questsButton_"],
-    div[class*="questsContainer_"],
+    [class*="questsContainer"],
+    [class*="questsCard"],
+    [class*="questsWrapper"],
+    [class*="questTile"],
+    [class*="questBar"],
+    [class*="questCard"],
+    [class*="questPanel"],
+    [class*="questBanner"],
+    [class*="questButton"],
+    [class*="questsButton"],
+    [class*="questBody"],
+    [class*="questReward"],
+    [class*="questPrompt"],
+    [class*="questNotice"],
+    [class*="questEmbed"],
+    [class*="quest_"],
+    [class*="quests_"],
+    [class*="quest-"],
+    [class*="quests-"],
+    [data-list-item-id*="quest" i]:not([data-list-item-id*="request" i]):not([data-list-item-id*="question" i]),
     div[aria-label="Quests"] {
       display: none !important;
     }
@@ -245,7 +266,6 @@
         const parsed = JSON.parse(saved);
         config = { ...config, ...parsed };
       }
-      // Also fetch stats counter
       const savedCount = localStorage.getItem('discord_adblocker_count');
       if (savedCount) {
         config.blockedCount = parseInt(savedCount, 10) || 0;
@@ -277,18 +297,46 @@
 
     let css = DEFAULT_CSS;
     if (!config.blockQuests) {
-      // Remove or disable quest hiding rules
       css += `
-        .quests-container, .quest-promo-banner, .quest-progress-bar, [aria-label*="quest"], div[aria-label="Quests"] {
-          display: block !important;
+        div[class*="panels_"] > div:has([class*="quest" i]),
+        div[class*="panels_"] > div:has([aria-label*="Quest" i]),
+        div[class*="panels_"] > div:has(a[href*="/quests"]),
+        div[class*="activityPanel_"]:has([class*="quest" i]),
+        div[class*="activityPanel_"]:has([aria-label*="Quest" i]),
+        .quests-container,
+        .quest-promo-banner,
+        .quest-progress-bar,
+        [class*="questsContainer"],
+        [class*="questsCard"],
+        [class*="questsWrapper"],
+        [class*="questTile"],
+        [class*="questBar"],
+        [class*="questCard"],
+        [class*="questPanel"],
+        [class*="questBanner"],
+        [class*="questButton"],
+        [class*="questsButton"],
+        [class*="questBody"],
+        [class*="questReward"],
+        [class*="questPrompt"],
+        [class*="questNotice"],
+        [class*="questEmbed"],
+        [class*="quest_"],
+        [class*="quests_"],
+        [class*="quest-"],
+        [class*="quests-"],
+        [data-list-item-id*="quest" i]:not([data-list-item-id*="request" i]):not([data-list-item-id*="question" i]),
+        div[aria-label="Quests"] {
+          display: inherit !important;
         }
       `;
     }
     if (!config.blockNitro) {
-      // Remove or disable nitro hiding rules
       css += `
-        button[aria-label="Send a gift"], a[data-list-item-id$="___nitro"], a[data-list-item-id*="shop"] {
-          display: flex !important;
+        button[aria-label="Send a gift"],
+        a[data-list-item-id$="___nitro"],
+        a[data-list-item-id*="shop"] {
+          display: inherit !important;
         }
       `;
     }
@@ -302,52 +350,103 @@
   function incrementBlockedCount() {
     config.blockedCount++;
     saveConfig();
-    // Update active UI elements if open
     const statsVal = document.getElementById('adblocker-modal-stats-val');
     if (statsVal) {
       statsVal.textContent = config.blockedCount.toLocaleString();
     }
   }
 
-  // Heuristic Ad Detection and MutationObserver
+  // Targeted Ad Detection and MutationObserver
   function setupObserver() {
-    const adSelectors = [
+    const questSelectors = [
+      'div[class*="panels_"] > div:has([class*="quest" i])',
+      'div[class*="panels_"] > div:has([aria-label*="Quest" i])',
+      'div[class*="panels_"] > div:has(a[href*="/quests"])',
+      'div[class*="activityPanel_"]:has([class*="quest" i])',
+      'div[class*="activityPanel_"]:has([aria-label*="Quest" i])',
       '.quests-container',
       '.quest-promo-banner',
-      'div[class*="questsContainer_"]',
-      'div[class*="questsButton_"]',
-      'div[aria-label="Quests"]',
-      'div[class*="promotions_"]',
-      'div[class*="promo_"]',
+      '.quest-progress-bar',
+      '[class*="questsContainer"]',
+      '[class*="questsCard"]',
+      '[class*="questsWrapper"]',
+      '[class*="questTile"]',
+      '[class*="questBar"]',
+      '[class*="questCard"]',
+      '[class*="questPanel"]',
+      '[class*="questBanner"]',
+      '[class*="questButton"]',
+      '[class*="questsButton"]',
+      '[class*="questBody"]',
+      '[class*="questReward"]',
+      '[class*="questPrompt"]',
+      '[class*="questNotice"]',
+      '[class*="questEmbed"]',
+      '[class*="quest_"]',
+      '[class*="quests_"]',
+      '[class*="quest-"]',
+      '[class*="quests-"]',
+      '[data-list-item-id*="quest" i]:not([data-list-item-id*="request" i]):not([data-list-item-id*="question" i])',
+      'div[aria-label="Quests"]'
+    ];
+
+    const nitroSelectors = [
       'button[aria-label="Send a gift"]',
       'a[data-list-item-id$="___nitro"]',
-      'a[data-list-item-id*="shop"]'
+      'a[data-list-item-id*="shop"]',
+      '[class*="premiumSubscribeButton_"]'
     ];
+
+    const promoSelectors = [
+      'div[class*="promotions_"]',
+      'div[class*="promo_"]'
+    ];
+
+    function getActiveSelectors() {
+      let selectors = [];
+      if (config.blockQuests) selectors = selectors.concat(questSelectors);
+      if (config.blockNitro) selectors = selectors.concat(nitroSelectors);
+      selectors = selectors.concat(promoSelectors);
+      return selectors;
+    }
 
     function checkAndMarkAd(el) {
       if (!config.enabled) return;
       if (el.dataset && el.dataset.discordAdblockerBlocked === 'true') return;
 
       let matchesAd = false;
-      for (const sel of adSelectors) {
-        if (el.matches && el.matches(sel)) {
-          matchesAd = true;
-          break;
+
+      // Check quest selectors if enabled
+      if (config.blockQuests) {
+        for (const sel of questSelectors) {
+          if (el.matches && el.matches(sel)) {
+            matchesAd = true;
+            break;
+          }
         }
       }
 
-      // Heuristic 1: Inspect bottom-left "panels" children
-      if (!matchesAd && el.parentElement && el.parentElement.matches && el.parentElement.matches('div[class*="panels_"]')) {
-        const isProfile = el.matches('div[class*="container_"]') || el.querySelector('button[aria-label="User Settings"]');
-        const isRTC = el.matches('div[class*="rtcConnection_"]') || el.matches('div[class*="connection_"]');
-        const isActivity = el.matches('div[class*="activityPanel_"]');
-
-        if (!isProfile && !isRTC && !isActivity && el.tagName === 'DIV') {
-          matchesAd = true;
+      // Check nitro selectors if enabled
+      if (!matchesAd && config.blockNitro) {
+        for (const sel of nitroSelectors) {
+          if (el.matches && el.matches(sel)) {
+            matchesAd = true;
+            break;
+          }
         }
       }
 
-      // Heuristic 2: Coordinate-based popups
+      // Check general promo selectors
+      if (!matchesAd) {
+        for (const sel of promoSelectors) {
+          if (el.matches && el.matches(sel)) {
+            matchesAd = true;
+            break;
+          }
+        }
+      }
+
+      // Coordinate-based popups
       if (!matchesAd && config.blockPopups && el.matches && (el.matches('[class*="layer_"]') || el.matches('[class*="tooltip_"]') || el.matches('[class*="popout_"]'))) {
         const text = (el.textContent || '').toLowerCase();
         const hasPromoKeyword = text.includes('quest') || text.includes('nitro') || text.includes('shop') || text.includes('gift') || text.includes('promotion') || text.includes('subscribe');
@@ -373,23 +472,25 @@
     }
 
     // Initial Scan
-    document.querySelectorAll(adSelectors.join(',')).forEach(checkAndMarkAd);
+    const scanElements = () => {
+      const activeSelectors = getActiveSelectors();
+      if (activeSelectors.length > 0) {
+        document.querySelectorAll(activeSelectors.join(',')).forEach(checkAndMarkAd);
+      }
+    };
+    scanElements();
 
     // Set up MutationObserver to watch for additions
     const observer = new MutationObserver((mutations) => {
+      if (!config.enabled) return;
       for (const mutation of mutations) {
         if (mutation.addedNodes) {
           for (const node of mutation.addedNodes) {
             if (node.nodeType === Node.ELEMENT_NODE) {
               checkAndMarkAd(node);
-              adSelectors.forEach(sel => {
-                node.querySelectorAll(sel).forEach(checkAndMarkAd);
-              });
-
-              // Check direct children of panels container
-              const panels = node.matches && node.matches('div[class*="panels_"]') ? node : node.querySelector && node.querySelector('div[class*="panels_"]');
-              if (panels) {
-                Array.from(panels.children).forEach(checkAndMarkAd);
+              const activeSelectors = getActiveSelectors();
+              if (activeSelectors.length > 0) {
+                node.querySelectorAll(activeSelectors.join(',')).forEach(checkAndMarkAd);
               }
 
               // Try injecting our shield button next to the User Settings gear
@@ -410,15 +511,12 @@
   function tryInjectWidgetButton(rootNode) {
     if (document.getElementById('discord-adblocker-btn')) return;
 
-    // The user profile panel usually has buttons (mute, deafen, settings)
-    // We look for a button with aria-label="User Settings"
     const settingsBtn = (rootNode && rootNode.querySelector) ? rootNode.querySelector('button[aria-label="User Settings"]') : document.querySelector('button[aria-label="User Settings"]');
     if (!settingsBtn) return;
 
     const btnGroup = settingsBtn.parentElement;
     if (!btnGroup) return;
 
-    // Create our elegant shield/adblocker button
     const widgetBtn = document.createElement('button');
     widgetBtn.id = 'discord-adblocker-btn';
     widgetBtn.className = 'adblocker-widget-btn';
@@ -430,17 +528,15 @@
       </svg>
     `;
 
-    // Click handler to open settings modal
     widgetBtn.addEventListener('click', (e) => {
       e.stopPropagation();
       openSettingsModal();
     });
 
-    // Insert next to the User Settings gear button
     btnGroup.insertBefore(widgetBtn, settingsBtn);
   }
 
-  // Beautiful Modal Overlay for Userscript
+  // Modal Overlay for Userscript
   function openSettingsModal() {
     if (document.getElementById('adblocker-modal-overlay')) return;
 
@@ -515,7 +611,6 @@
 
     document.body.appendChild(overlay);
 
-    // Event handlers
     const closeBtn = document.getElementById('adblocker-modal-close-btn');
     const resetBtn = document.getElementById('adblocker-modal-reset');
     const toggleEnable = document.getElementById('adblocker-toggle-enable');
@@ -577,7 +672,6 @@
     });
   }
 
-  // Initialize observer and try button injection
   if (document.readyState === 'loading') {
     document.addEventListener('DOMContentLoaded', () => {
       setupObserver();
