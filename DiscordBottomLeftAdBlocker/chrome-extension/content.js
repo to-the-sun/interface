@@ -8,10 +8,9 @@ const DEFAULT_CSS = `
   .quests-container,
   .quest-promo-banner,
   .quest-progress-bar,
-  [data-list-item-id*="quest"],
-  [aria-label*="quest"],
-  div[class*="questsButton_"],
-  div[class*="questsContainer_"],
+  [class*="quest" i]:not([class*="request" i]):not([class*="question" i]),
+  [data-list-item-id*="quest" i]:not([data-list-item-id*="request" i]):not([data-list-item-id*="question" i]),
+  [aria-label*="quest" i]:not([aria-label*="request" i]):not([aria-label*="question" i]),
   div[aria-label="Quests"] {
     display: none !important;
   }
@@ -85,10 +84,9 @@ function applyConfig() {
       .quests-container,
       .quest-promo-banner,
       .quest-progress-bar,
-      [data-list-item-id*="quest"],
-      [aria-label*="quest"],
-      div[class*="questsButton_"],
-      div[class*="questsContainer_"],
+      [class*="quest" i]:not([class*="request" i]):not([class*="question" i]),
+      [data-list-item-id*="quest" i]:not([data-list-item-id*="request" i]):not([data-list-item-id*="question" i]),
+      [aria-label*="quest" i]:not([aria-label*="request" i]):not([aria-label*="question" i]),
       div[aria-label="Quests"] {
         display: none !important;
       }
@@ -133,47 +131,75 @@ function incrementBlockedCount() {
 
 // Heuristic Ad Detector and MutationObserver
 function setupObserver() {
-  // Selectors to target for counting
-  const adSelectors = [
+  // Categorized selectors for targeted heuristic evaluation
+  const questSelectors = [
     '.quests-container',
     '.quest-promo-banner',
-    'div[class*="questsContainer_"]',
-    'div[class*="questsButton_"]',
-    'div[aria-label="Quests"]',
-    'div[class*="promotions_"]',
-    'div[class*="promo_"]',
+    '.quest-progress-bar',
+    '[class*="quest" i]:not([class*="request" i]):not([class*="question" i])',
+    '[data-list-item-id*="quest" i]:not([data-list-item-id*="request" i]):not([data-list-item-id*="question" i])',
+    '[aria-label*="quest" i]:not([aria-label*="request" i]):not([aria-label*="question" i])',
+    'div[aria-label="Quests"]'
+  ];
+
+  const nitroSelectors = [
     'button[aria-label="Send a gift"]',
     'a[data-list-item-id$="___nitro"]',
-    'a[data-list-item-id*="shop"]'
+    'a[data-list-item-id*="shop"]',
+    '[class*="premiumSubscribeButton_"]'
   ];
+
+  const promoSelectors = [
+    'div[class*="promotions_"]',
+    'div[class*="promo_"]'
+  ];
+
+  function getActiveSelectors() {
+    let selectors = [];
+    if (config.blockQuests) selectors = selectors.concat(questSelectors);
+    if (config.blockNitro) selectors = selectors.concat(nitroSelectors);
+    selectors = selectors.concat(promoSelectors);
+    return selectors;
+  }
 
   // Helper to check if an element is an ad and mark it
   function checkAndMarkAd(el) {
     if (!config.enabled) return;
     if (el.dataset && el.dataset.discordAdblockerBlocked === 'true') return;
 
-    // Check matches for explicit selectors
     let matchesAd = false;
-    for (const sel of adSelectors) {
-      if (el.matches && el.matches(sel)) {
-        matchesAd = true;
-        break;
+
+    // Check quest selectors if enabled
+    if (config.blockQuests) {
+      for (const sel of questSelectors) {
+        if (el.matches && el.matches(sel)) {
+          matchesAd = true;
+          break;
+        }
       }
     }
 
-    // Heuristic 1: Inspect bottom-left "panels" children
-    // Any child of [class*="panels_"] that is not Profile, RTC, or Activity Panel is an ad
-    if (!matchesAd && el.parentElement && el.parentElement.matches && el.parentElement.matches('div[class*="panels_"]')) {
-      const isProfile = el.matches('div[class*="container_"]') || el.querySelector('button[aria-label="User Settings"]');
-      const isRTC = el.matches('div[class*="rtcConnection_"]') || el.matches('div[class*="connection_"]');
-      const isActivity = el.matches('div[class*="activityPanel_"]');
-
-      if (!isProfile && !isRTC && !isActivity && el.tagName === 'DIV') {
-        matchesAd = true;
+    // Check nitro selectors if enabled
+    if (!matchesAd && config.blockNitro) {
+      for (const sel of nitroSelectors) {
+        if (el.matches && el.matches(sel)) {
+          matchesAd = true;
+          break;
+        }
       }
     }
 
-    // Heuristic 2: Coordinate-based and keyword-based popup/tooltip/callout detection
+    // Check general promo selectors
+    if (!matchesAd) {
+      for (const sel of promoSelectors) {
+        if (el.matches && el.matches(sel)) {
+          matchesAd = true;
+          break;
+        }
+      }
+    }
+
+    // Heuristic: Coordinate-based and keyword-based popup/tooltip/callout detection
     if (!matchesAd && config.blockPopups && el.matches && (el.matches('[class*="layer_"]') || el.matches('[class*="tooltip_"]') || el.matches('[class*="popout_"]'))) {
       const text = (el.textContent || '').toLowerCase();
       const hasPromoKeyword = text.includes('quest') || text.includes('nitro') || text.includes('shop') || text.includes('gift') || text.includes('promotion') || text.includes('subscribe');
@@ -201,9 +227,15 @@ function setupObserver() {
   }
 
   // Scan existing DOM on load
-  document.querySelectorAll(adSelectors.join(',')).forEach(checkAndMarkAd);
+  const scanElements = () => {
+    const selectors = getActiveSelectors();
+    if (selectors.length > 0) {
+      document.querySelectorAll(selectors.join(',')).forEach(checkAndMarkAd);
+    }
+  };
+  scanElements();
 
-  // Monitor panels container specifically if available, otherwise fallback to entire document
+  // Monitor DOM changes for dynamic promotional elements
   const observer = new MutationObserver((mutations) => {
     if (!config.enabled) return;
     for (const mutation of mutations) {
@@ -213,13 +245,9 @@ function setupObserver() {
             // Check the node itself
             checkAndMarkAd(node);
             // Check children of the node
-            adSelectors.forEach(sel => {
-              node.querySelectorAll(sel).forEach(checkAndMarkAd);
-            });
-            // Check direct children of panels if the node is or contains panels container
-            const panels = node.matches && node.matches('div[class*="panels_"]') ? node : node.querySelector && node.querySelector('div[class*="panels_"]');
-            if (panels) {
-              Array.from(panels.children).forEach(checkAndMarkAd);
+            const activeSelectors = getActiveSelectors();
+            if (activeSelectors.length > 0) {
+              node.querySelectorAll(activeSelectors.join(',')).forEach(checkAndMarkAd);
             }
           }
         }

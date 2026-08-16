@@ -11,10 +11,10 @@ This project provides two distinct ways to block ads depending on your preferenc
 ## 🚀 Key Features
 
 * **Instantaneous CSS Injection (`document_start`)**: Injects stylesheet rules before the DOM begins rendering. This guarantees **zero visual flicker or pop-in**—promotions and ads are blocked before they are ever drawn.
-* **Intelligent Heuristic Blocker**: Discord obfuscates CSS class names (e.g. `panels_a4d3d2`). This blocker uses a smart positional heuristic: any child of the bottom-left `panels` container that is *not* your profile panel, voice connection panel, or game activity panel is identified as an ad and blocked automatically.
+* **Targeted Heuristic Blocker**: Safely targets quest containers, shop banners, and promotional elements without risking accidental hiding of legitimate user panels or voice/RTC activity controls.
 * **Geometric & Keyword Callout Blocking**: Dynamically intercepts overlay layers, tooltips, and popouts (like "Try Nitro" or "New Quest available") pointing to the bottom-left corner of the screen using geometric coordinates and ad-related keyword analysis.
 * **Granular Settings**: Customize what you block:
-  * **Discord Quests**: Sponsored games and activities.
+  * **Discord Quests**: Sponsored games and activities (with negation filters to protect friend/message requests).
   * **Nitro Promos & Gift Icon**: Hides "Send a Gift" buttons and subscription upsells.
   * **Popup Callouts**: Absolute-positioned tooltips targeting your settings panel.
 * **Live Statistics Counter**: See exactly how many advertisements and promotions have been blocked in real-time, with option to reset at any time.
@@ -49,8 +49,10 @@ Static injection of display rules prevents the browser's layout engine from rend
 ```css
 .quests-container,
 .quest-promo-banner,
-div[class*="questsContainer_"],
-div[class*="questsButton_"],
+.quest-progress-bar,
+[class*="quest" i]:not([class*="request" i]):not([class*="question" i]),
+[data-list-item-id*="quest" i]:not([data-list-item-id*="request" i]):not([data-list-item-id*="question" i]),
+[aria-label*="quest" i]:not([aria-label*="request" i]):not([aria-label*="question" i]),
 div[aria-label="Quests"],
 div[class*="promotions_"],
 div[class*="promo_"],
@@ -62,9 +64,7 @@ a[data-list-item-id*="shop"] {
 ```
 
 ### Heuristic Analysis
-The script watches DOM insertions via `MutationObserver` and analyzes child elements of `div[class*="panels_"]`. The only legitimate child nodes of this area are:
-1. **Profile Panel**: containing avatar and mute/deafen buttons (`[class*="container_"]`).
-2. **RTC Voice Panel**: containing voice metrics and channel name (`[class*="rtcConnection_"]` or `[class*="connection_"]`).
-3. **Activity Panel**: containing currently played games (`[class*="activityPanel_"]`).
-
-Any other div element placed inside is treated as a promotional banner/advertisement, marked, cleanly hidden, and logged in the blocker's storage counter.
+The script watches DOM insertions via `MutationObserver` and dynamically flags promotional elements based on active user preferences:
+1. **Quest Elements**: Matches quest cards, quest banners, and quest bars while using negation filters (`:not([class*="request" i]):not([class*="question" i])`) to prevent hiding friend requests, message requests, or help questions.
+2. **Nitro & Shop Promotions**: Intercepts Nitro gift buttons, store link items, and premium subscription callouts.
+3. **Bottom-Left Popup Callouts**: Analyzes absolute-positioned overlay layers and tooltips rendered near the bottom-left corner (`left < 360` & `top > innerHeight - 350`) containing promotional keywords.
