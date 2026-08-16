@@ -15,10 +15,11 @@
 
   // Default CSS Rules targeting all kinds of promotional elements
   const DEFAULT_CSS = `
-    /* Block Outer Quest Cards & Panels in bottom-left area */
-    div[class*="panels_"] > div:has([class*="quest" i]),
-    div[class*="panels_"] > div:has([aria-label*="Quest" i]),
-    div[class*="panels_"] > div:has(a[href*="/quests"]),
+    /* Block Outer Quest Cards & Panels strictly inside bottom-left panels_ area */
+    div[class*="panels_"] > *:has([class*="quest" i]):not(:has(button[aria-label="User Settings"])):not(:has([class*="avatar_"])),
+    div[class*="panels_"] > *:has([aria-label*="Quest" i]):not(:has(button[aria-label="User Settings"])):not(:has([class*="avatar_"])),
+    div[class*="panels_"] > *:has(a[href*="/quests"]):not(:has(button[aria-label="User Settings"])):not(:has([class*="avatar_"])),
+    div[class*="panels_"] > *:has([class*="reward" i]):not(:has(button[aria-label="User Settings"])):not(:has([class*="avatar_"])),
     div[class*="activityPanel_"]:has([class*="quest" i]),
     div[class*="activityPanel_"]:has([aria-label*="Quest" i]),
     .quests-container,
@@ -39,6 +40,12 @@
     [class*="questPrompt"],
     [class*="questNotice"],
     [class*="questEmbed"],
+    [class*="questContainer"],
+    [class*="questWrapper"],
+    [class*="questBox"],
+    [class*="questContent"],
+    [class*="questHome"],
+    [class*="questBarWrapper"],
     [class*="quest_"],
     [class*="quests_"],
     [class*="quest-"],
@@ -298,9 +305,10 @@
     let css = DEFAULT_CSS;
     if (!config.blockQuests) {
       css += `
-        div[class*="panels_"] > div:has([class*="quest" i]),
-        div[class*="panels_"] > div:has([aria-label*="Quest" i]),
-        div[class*="panels_"] > div:has(a[href*="/quests"]),
+        div[class*="panels_"] > *:has([class*="quest" i]):not(:has(button[aria-label="User Settings"])):not(:has([class*="avatar_"])),
+        div[class*="panels_"] > *:has([aria-label*="Quest" i]):not(:has(button[aria-label="User Settings"])):not(:has([class*="avatar_"])),
+        div[class*="panels_"] > *:has(a[href*="/quests"]):not(:has(button[aria-label="User Settings"])):not(:has([class*="avatar_"])),
+        div[class*="panels_"] > *:has([class*="reward" i]):not(:has(button[aria-label="User Settings"])):not(:has([class*="avatar_"])),
         div[class*="activityPanel_"]:has([class*="quest" i]),
         div[class*="activityPanel_"]:has([aria-label*="Quest" i]),
         .quests-container,
@@ -321,6 +329,12 @@
         [class*="questPrompt"],
         [class*="questNotice"],
         [class*="questEmbed"],
+        [class*="questContainer"],
+        [class*="questWrapper"],
+        [class*="questBox"],
+        [class*="questContent"],
+        [class*="questHome"],
+        [class*="questBarWrapper"],
         [class*="quest_"],
         [class*="quests_"],
         [class*="quest-"],
@@ -356,12 +370,71 @@
     }
   }
 
+  // Find highest safe quest parent container to collapse entire quest card box
+  function findHighestSafeQuestContainer(startEl) {
+    let curr = startEl;
+    let highestSafe = null;
+
+    while (curr && curr !== document.body && curr !== document.documentElement) {
+      if (curr.matches && (curr.matches('[class*="sidebar_"]') || curr.matches('[class*="panels_"]') || curr.matches('#app-mount') || curr.tagName === 'BODY' || curr.tagName === 'HTML')) {
+        break;
+      }
+
+      const hasUserProfile = curr.querySelector('button[aria-label="User Settings"]') || curr.querySelector('[class*="avatar_"]');
+      const hasVoicePanel = curr.querySelector('[class*="rtcConnection_"]') || curr.querySelector('[class*="connection_"]');
+      if (hasUserProfile || hasVoicePanel) {
+        break;
+      }
+
+      highestSafe = curr;
+      curr = curr.parentElement;
+    }
+
+    return highestSafe;
+  }
+
+  // Inspect bottom-left panel cards specifically to ensure whole quest card container is collapsed
+  function checkAndHideQuestPanels() {
+    if (!config.enabled || !config.blockQuests) return;
+
+    const panelsContainer = document.querySelector('div[class*="panels_"]');
+    if (!panelsContainer) return;
+
+    for (const card of panelsContainer.children) {
+      if (card.closest && card.closest('[data-discord-adblocker-blocked="true"]')) continue;
+
+      // Never hide the user profile panel or RTC voice panel
+      const isUserProfile = card.querySelector('button[aria-label="User Settings"]') || card.querySelector('[class*="avatar_"]');
+      const isVoicePanel = card.querySelector('[class*="rtcConnection_"]') || card.querySelector('[class*="connection_"]');
+      if (isUserProfile || isVoicePanel) continue;
+
+      const cardText = (card.textContent || '').toLowerCase();
+      const isQuestCard = cardText.includes('quest') ||
+                          cardText.includes('orbs') ||
+                          cardText.includes('get reward') ||
+                          cardText.includes('claim reward') ||
+                          cardText.includes('points to win') ||
+                          card.querySelector('[class*="quest" i]') ||
+                          card.querySelector('a[href*="/quests"]') ||
+                          card.querySelector('[aria-label*="quest" i]');
+
+      if (isQuestCard) {
+        const highestContainer = findHighestSafeQuestContainer(card) || card;
+        highestContainer.style.setProperty('display', 'none', 'important');
+        highestContainer.setAttribute('data-discord-adblocker-blocked', 'true');
+        card.setAttribute('data-discord-adblocker-blocked', 'true');
+        incrementBlockedCount();
+      }
+    }
+  }
+
   // Targeted Ad Detection and MutationObserver
   function setupObserver() {
     const questSelectors = [
-      'div[class*="panels_"] > div:has([class*="quest" i])',
-      'div[class*="panels_"] > div:has([aria-label*="Quest" i])',
-      'div[class*="panels_"] > div:has(a[href*="/quests"])',
+      'div[class*="panels_"] > *:has([class*="quest" i]):not(:has(button[aria-label="User Settings"])):not(:has([class*="avatar_"]))',
+      'div[class*="panels_"] > *:has([aria-label*="Quest" i]):not(:has(button[aria-label="User Settings"])):not(:has([class*="avatar_"]))',
+      'div[class*="panels_"] > *:has(a[href*="/quests"]):not(:has(button[aria-label="User Settings"])):not(:has([class*="avatar_"]))',
+      'div[class*="panels_"] > *:has([class*="reward" i]):not(:has(button[aria-label="User Settings"])):not(:has([class*="avatar_"]))',
       'div[class*="activityPanel_"]:has([class*="quest" i])',
       'div[class*="activityPanel_"]:has([aria-label*="Quest" i])',
       '.quests-container',
@@ -382,6 +455,12 @@
       '[class*="questPrompt"]',
       '[class*="questNotice"]',
       '[class*="questEmbed"]',
+      '[class*="questContainer"]',
+      '[class*="questWrapper"]',
+      '[class*="questBox"]',
+      '[class*="questContent"]',
+      '[class*="questHome"]',
+      '[class*="questBarWrapper"]',
       '[class*="quest_"]',
       '[class*="quests_"]',
       '[class*="quest-"]',
@@ -412,7 +491,7 @@
 
     function checkAndMarkAd(el) {
       if (!config.enabled) return;
-      if (el.dataset && el.dataset.discordAdblockerBlocked === 'true') return;
+      if (el.closest && el.closest('[data-discord-adblocker-blocked="true"]')) return;
 
       let matchesAd = false;
 
@@ -446,8 +525,8 @@
         }
       }
 
-      // Coordinate-based popups
-      if (!matchesAd && config.blockPopups && el.matches && (el.matches('[class*="layer_"]') || el.matches('[class*="tooltip_"]') || el.matches('[class*="popout_"]'))) {
+      // Coordinate-based popups (specifically scoped to tooltips and popouts, NOT generic layers)
+      if (!matchesAd && config.blockPopups && el.matches && (el.matches('[class*="tooltip_"]') || el.matches('[class*="popout_"]'))) {
         const text = (el.textContent || '').toLowerCase();
         const hasPromoKeyword = text.includes('quest') || text.includes('nitro') || text.includes('shop') || text.includes('gift') || text.includes('promotion') || text.includes('subscribe');
 
@@ -467,12 +546,20 @@
         if (el.setAttribute) {
           el.setAttribute('data-discord-adblocker-blocked', 'true');
         }
+
+        const highestSafe = findHighestSafeQuestContainer(el);
+        if (highestSafe) {
+          highestSafe.style.setProperty('display', 'none', 'important');
+          highestSafe.setAttribute('data-discord-adblocker-blocked', 'true');
+        }
+
         incrementBlockedCount();
       }
     }
 
     // Initial Scan
     const scanElements = () => {
+      checkAndHideQuestPanels();
       const activeSelectors = getActiveSelectors();
       if (activeSelectors.length > 0) {
         document.querySelectorAll(activeSelectors.join(',')).forEach(checkAndMarkAd);
@@ -483,6 +570,7 @@
     // Set up MutationObserver to watch for additions
     const observer = new MutationObserver((mutations) => {
       if (!config.enabled) return;
+      checkAndHideQuestPanels();
       for (const mutation of mutations) {
         if (mutation.addedNodes) {
           for (const node of mutation.addedNodes) {

@@ -11,10 +11,10 @@ This project provides two distinct ways to block ads depending on your preferenc
 ## 🚀 Key Features
 
 * **Instantaneous CSS Injection (`document_start`)**: Injects stylesheet rules before the DOM begins rendering. This guarantees **zero visual flicker or pop-in**—promotions and ads are blocked before they are ever drawn.
-* **Targeted Outer Container Blocker**: Uses CSS `:has()` rules to target and hide the entire outer Quest panel card in the bottom-left sidebar while leaving user profile, voice, and RTC panels 100% intact.
-* **Geometric & Keyword Callout Blocking**: Dynamically intercepts overlay layers, tooltips, and popouts (like "Try Nitro" or "New Quest available") pointing to the bottom-left corner of the screen using geometric coordinates and ad-related keyword analysis.
+* **Targeted Outer Container Blocker**: Uses CSS `:has()` rules and dynamic parent-chain climbing algorithms (`findHighestSafeQuestContainer`) to target and hide the entire outer Quest panel card box in the bottom-left sidebar while leaving user profile, voice, and RTC panels 100% intact.
+* **Geometric & Keyword Callout Blocking**: Dynamically intercepts tooltips and popouts (like "Try Nitro" or "New Quest available") pointing to the bottom-left corner of the screen using geometric coordinates and ad-related keyword analysis.
 * **Granular Settings**: Customize what you block:
-  * **Discord Quests**: Sponsored games and activities (using explicit developer-class prefixes to prevent hash collisions with user profile elements).
+  * **Discord Quests**: Sponsored games and activities (using explicit developer-class prefixes and parent walking to prevent hash collisions and squashed/crumpled containers).
   * **Nitro Promos & Gift Icon**: Hides "Send a Gift" buttons and subscription upsells.
   * **Popup Callouts**: Absolute-positioned tooltips targeting your settings panel.
 * **Live Statistics Counter**: See exactly how many advertisements and promotions have been blocked in real-time, with option to reset at any time.
@@ -47,7 +47,7 @@ This project provides two distinct ways to block ads depending on your preferenc
 ### CSS Injection & Outer Container Targeting
 Static injection of display rules uses `:has()` parent selectors to collapse outer Quest card wrappers:
 ```css
-div[class*="panels_"] > div:has([class*="quest" i]),
+div[class*="panels_"] > *:has([class*="quest" i]):not(:has(button[aria-label="User Settings"])):not(:has([class*="avatar_"])),
 div[class*="activityPanel_"]:has([class*="quest" i]),
 .quests-container,
 .quest-promo-banner,
@@ -59,6 +59,9 @@ div[class*="activityPanel_"]:has([class*="quest" i]),
 [class*="questBar"],
 [class*="questCard"],
 [class*="questPanel"],
+[class*="questContainer"],
+[class*="questWrapper"],
+[class*="questBox"],
 div[aria-label="Quests"],
 div[class*="promotions_"],
 div[class*="promo_"],
@@ -69,8 +72,8 @@ a[data-list-item-id*="shop"] {
 }
 ```
 
-### Heuristic Analysis
+### Heuristic Analysis & Parent-Chain Climbing
 The script watches DOM insertions via `MutationObserver` and dynamically flags promotional elements based on active user preferences:
-1. **Quest Elements & Outer Cards**: Leverages outer container `:has()` rules to collapse the entire Quest tile box so no empty rectangle or banner remains, while targeting specific developer-class prefixes (`questTile`, `questsContainer`, `questCard`, `quest_`) to avoid hash collisions on user panel components.
+1. **Quest Elements & Outer Cards**: Leverages parent-chain walking (`findHighestSafeQuestContainer`) and `:has()` rules to collapse the entire Quest tile box so no squashed banner or brown tab remains, while targeting specific developer-class prefixes (`questTile`, `questsContainer`, `questCard`, `quest_`) and using explicit user profile negation filters to avoid hiding main user panel components.
 2. **Nitro & Shop Promotions**: Intercepts Nitro gift buttons, store link items, and premium subscription callouts.
-3. **Bottom-Left Popup Callouts**: Analyzes absolute-positioned overlay layers and tooltips rendered near the bottom-left corner (`left < 360` & `top > innerHeight - 350`) containing promotional keywords.
+3. **Bottom-Left Popup Callouts**: Analyzes absolute-positioned tooltips and popouts rendered near the bottom-left corner (`left < 360` & `top > innerHeight - 350`) containing promotional keywords.
