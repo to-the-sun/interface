@@ -15,18 +15,12 @@
 
   // Default CSS Rules targeting all kinds of promotional elements
   const DEFAULT_CSS = `
-    /* Block Outer Quest Cards & Panels in bottom-left area */
-    div[class*="panels_"] > div:has([class*="quest" i]),
-    div[class*="panels_"] > div:has([aria-label*="Quest" i]),
-    div[class*="panels_"] > div:has(a[href*="/quests"]),
-    div[class*="panels_"] div:has([class*="quest" i]),
-    div[class*="panels_"] div:has([aria-label*="Quest" i]),
-    div[class*="panels_"] div:has(a[href*="/quests"]),
+    /* Block Outer Quest Cards & Panels strictly inside bottom-left panels_ container */
+    div[class*="panels_"] > div:has([class*="quest" i]):not(:has(button[aria-label="User Settings"])):not(:has([class*="avatar_"])),
+    div[class*="panels_"] > div:has([aria-label*="Quest" i]):not(:has(button[aria-label="User Settings"])):not(:has([class*="avatar_"])),
+    div[class*="panels_"] > div:has(a[href*="/quests"]):not(:has(button[aria-label="User Settings"])):not(:has([class*="avatar_"])),
     div[class*="activityPanel_"]:has([class*="quest" i]),
     div[class*="activityPanel_"]:has([aria-label*="Quest" i]),
-    div[class*="container_"]:has([class*="quest" i]),
-    div[class*="wrapper_"]:has([class*="quest" i]),
-    div[class*="outerContainer_"]:has([class*="quest" i]),
     .quests-container,
     .quest-promo-banner,
     .quest-progress-bar,
@@ -310,17 +304,11 @@
     let css = DEFAULT_CSS;
     if (!config.blockQuests) {
       css += `
-        div[class*="panels_"] > div:has([class*="quest" i]),
-        div[class*="panels_"] > div:has([aria-label*="Quest" i]),
-        div[class*="panels_"] > div:has(a[href*="/quests"]),
-        div[class*="panels_"] div:has([class*="quest" i]),
-        div[class*="panels_"] div:has([aria-label*="Quest" i]),
-        div[class*="panels_"] div:has(a[href*="/quests"]),
+        div[class*="panels_"] > div:has([class*="quest" i]):not(:has(button[aria-label="User Settings"])):not(:has([class*="avatar_"])),
+        div[class*="panels_"] > div:has([aria-label*="Quest" i]):not(:has(button[aria-label="User Settings"])):not(:has([class*="avatar_"])),
+        div[class*="panels_"] > div:has(a[href*="/quests"]):not(:has(button[aria-label="User Settings"])):not(:has([class*="avatar_"])),
         div[class*="activityPanel_"]:has([class*="quest" i]),
         div[class*="activityPanel_"]:has([aria-label*="Quest" i]),
-        div[class*="container_"]:has([class*="quest" i]),
-        div[class*="wrapper_"]:has([class*="quest" i]),
-        div[class*="outerContainer_"]:has([class*="quest" i]),
         .quests-container,
         .quest-promo-banner,
         .quest-progress-bar,
@@ -383,17 +371,11 @@
   // Targeted Ad Detection and MutationObserver
   function setupObserver() {
     const questSelectors = [
-      'div[class*="panels_"] > div:has([class*="quest" i])',
-      'div[class*="panels_"] > div:has([aria-label*="Quest" i])',
-      'div[class*="panels_"] > div:has(a[href*="/quests"])',
-      'div[class*="panels_"] div:has([class*="quest" i])',
-      'div[class*="panels_"] div:has([aria-label*="Quest" i])',
-      'div[class*="panels_"] div:has(a[href*="/quests"])',
+      'div[class*="panels_"] > div:has([class*="quest" i]):not(:has(button[aria-label="User Settings"])):not(:has([class*="avatar_"]))',
+      'div[class*="panels_"] > div:has([aria-label*="Quest" i]):not(:has(button[aria-label="User Settings"])):not(:has([class*="avatar_"]))',
+      'div[class*="panels_"] > div:has(a[href*="/quests"]):not(:has(button[aria-label="User Settings"])):not(:has([class*="avatar_"]))',
       'div[class*="activityPanel_"]:has([class*="quest" i])',
       'div[class*="activityPanel_"]:has([aria-label*="Quest" i])',
-      'div[class*="container_"]:has([class*="quest" i])',
-      'div[class*="wrapper_"]:has([class*="quest" i])',
-      'div[class*="outerContainer_"]:has([class*="quest" i])',
       '.quests-container',
       '.quest-promo-banner',
       '.quest-progress-bar',
@@ -482,8 +464,8 @@
         }
       }
 
-      // Coordinate-based popups
-      if (!matchesAd && config.blockPopups && el.matches && (el.matches('[class*="layer_"]') || el.matches('[class*="tooltip_"]') || el.matches('[class*="popout_"]'))) {
+      // Coordinate-based popups (specifically scoped to tooltips and popouts, NOT generic layers)
+      if (!matchesAd && config.blockPopups && el.matches && (el.matches('[class*="tooltip_"]') || el.matches('[class*="popout_"]'))) {
         const text = (el.textContent || '').toLowerCase();
         const hasPromoKeyword = text.includes('quest') || text.includes('nitro') || text.includes('shop') || text.includes('gift') || text.includes('promotion') || text.includes('subscribe');
 
@@ -503,12 +485,14 @@
         if (el.setAttribute) {
           el.setAttribute('data-discord-adblocker-blocked', 'true');
         }
-        // Also check if el is inside a panel wrapper in bottom-left and hide the direct panel card wrapper to prevent crumpled spacing
+
+        // Safely collapse outer direct panel wrapper if inside bottom-left panels_ container and not the user profile
         const panelWrapper = el.closest && el.closest('div[class*="panels_"] > div');
-        if (panelWrapper && !panelWrapper.querySelector('button[aria-label="User Settings"]')) {
+        if (panelWrapper && !panelWrapper.querySelector('button[aria-label="User Settings"]') && !panelWrapper.querySelector('[class*="avatar_"]')) {
           panelWrapper.style.setProperty('display', 'none', 'important');
           panelWrapper.setAttribute('data-discord-adblocker-blocked', 'true');
         }
+
         incrementBlockedCount();
       }
     }
