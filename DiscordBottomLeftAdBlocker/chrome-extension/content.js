@@ -8,8 +8,14 @@ const DEFAULT_CSS = `
   div[class*="panels_"] > div:has([class*="quest" i]),
   div[class*="panels_"] > div:has([aria-label*="Quest" i]),
   div[class*="panels_"] > div:has(a[href*="/quests"]),
+  div[class*="panels_"] div:has([class*="quest" i]),
+  div[class*="panels_"] div:has([aria-label*="Quest" i]),
+  div[class*="panels_"] div:has(a[href*="/quests"]),
   div[class*="activityPanel_"]:has([class*="quest" i]),
   div[class*="activityPanel_"]:has([aria-label*="Quest" i]),
+  div[class*="container_"]:has([class*="quest" i]),
+  div[class*="wrapper_"]:has([class*="quest" i]),
+  div[class*="outerContainer_"]:has([class*="quest" i]),
   .quests-container,
   .quest-promo-banner,
   .quest-progress-bar,
@@ -28,6 +34,12 @@ const DEFAULT_CSS = `
   [class*="questPrompt"],
   [class*="questNotice"],
   [class*="questEmbed"],
+  [class*="questContainer"],
+  [class*="questWrapper"],
+  [class*="questBox"],
+  [class*="questContent"],
+  [class*="questHome"],
+  [class*="questBarWrapper"],
   [class*="quest_"],
   [class*="quests_"],
   [class*="quest-"],
@@ -104,8 +116,14 @@ function applyConfig() {
       div[class*="panels_"] > div:has([class*="quest" i]),
       div[class*="panels_"] > div:has([aria-label*="Quest" i]),
       div[class*="panels_"] > div:has(a[href*="/quests"]),
+      div[class*="panels_"] div:has([class*="quest" i]),
+      div[class*="panels_"] div:has([aria-label*="Quest" i]),
+      div[class*="panels_"] div:has(a[href*="/quests"]),
       div[class*="activityPanel_"]:has([class*="quest" i]),
       div[class*="activityPanel_"]:has([aria-label*="Quest" i]),
+      div[class*="container_"]:has([class*="quest" i]),
+      div[class*="wrapper_"]:has([class*="quest" i]),
+      div[class*="outerContainer_"]:has([class*="quest" i]),
       .quests-container,
       .quest-promo-banner,
       .quest-progress-bar,
@@ -124,6 +142,12 @@ function applyConfig() {
       [class*="questPrompt"],
       [class*="questNotice"],
       [class*="questEmbed"],
+      [class*="questContainer"],
+      [class*="questWrapper"],
+      [class*="questBox"],
+      [class*="questContent"],
+      [class*="questHome"],
+      [class*="questBarWrapper"],
       [class*="quest_"],
       [class*="quests_"],
       [class*="quest-"],
@@ -176,8 +200,14 @@ function setupObserver() {
     'div[class*="panels_"] > div:has([class*="quest" i])',
     'div[class*="panels_"] > div:has([aria-label*="Quest" i])',
     'div[class*="panels_"] > div:has(a[href*="/quests"])',
+    'div[class*="panels_"] div:has([class*="quest" i])',
+    'div[class*="panels_"] div:has([aria-label*="Quest" i])',
+    'div[class*="panels_"] div:has(a[href*="/quests"])',
     'div[class*="activityPanel_"]:has([class*="quest" i])',
     'div[class*="activityPanel_"]:has([aria-label*="Quest" i])',
+    'div[class*="container_"]:has([class*="quest" i])',
+    'div[class*="wrapper_"]:has([class*="quest" i])',
+    'div[class*="outerContainer_"]:has([class*="quest" i])',
     '.quests-container',
     '.quest-promo-banner',
     '.quest-progress-bar',
@@ -196,6 +226,12 @@ function setupObserver() {
     '[class*="questPrompt"]',
     '[class*="questNotice"]',
     '[class*="questEmbed"]',
+    '[class*="questContainer"]',
+    '[class*="questWrapper"]',
+    '[class*="questBox"]',
+    '[class*="questContent"]',
+    '[class*="questHome"]',
+    '[class*="questBarWrapper"]',
     '[class*="quest_"]',
     '[class*="quests_"]',
     '[class*="quest-"]',
@@ -281,6 +317,12 @@ function setupObserver() {
       }
       if (el.setAttribute) {
         el.setAttribute('data-discord-adblocker-blocked', 'true');
+      }
+      // Also check if el is inside a panel wrapper in bottom-left and hide the direct panel card wrapper to prevent crumpled spacing
+      const panelWrapper = el.closest && el.closest('div[class*="panels_"] > div');
+      if (panelWrapper && !panelWrapper.querySelector('button[aria-label="User Settings"]')) {
+        panelWrapper.style.setProperty('display', 'none', 'important');
+        panelWrapper.setAttribute('data-discord-adblocker-blocked', 'true');
       }
       incrementBlockedCount();
     }
