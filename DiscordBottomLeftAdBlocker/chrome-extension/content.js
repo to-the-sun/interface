@@ -4,7 +4,7 @@
 
 // Default stylesheet targeting ads, quests, and promotional elements
 const DEFAULT_CSS = `
-  /* Block Outer Quest Cards & Banners in bottom-left panels_ area */
+  /* Block Outer Quest Cards & Banners strictly inside bottom-left panels_ area */
   div[class*="panels_"] > *:has([class*="quest" i]):not(:has(button[aria-label="User Settings"])):not(:has([class*="avatar_"])),
   div[class*="panels_"] > *:has([aria-label*="Quest" i]):not(:has(button[aria-label="User Settings"])):not(:has([class*="avatar_"])),
   div[class*="panels_"] > *:has(a[href*="/quests"]):not(:has(button[aria-label="User Settings"])):not(:has([class*="avatar_"])),
@@ -184,14 +184,38 @@ function incrementBlockedCount() {
   }
 }
 
+// Find highest safe quest parent container to collapse entire quest card box
+function findHighestSafeQuestContainer(startEl) {
+  let curr = startEl;
+  let highestSafe = null;
+
+  while (curr && curr !== document.body && curr !== document.documentElement) {
+    if (curr.matches && (curr.matches('[class*="sidebar_"]') || curr.matches('[class*="panels_"]') || curr.matches('#app-mount') || curr.tagName === 'BODY' || curr.tagName === 'HTML')) {
+      break;
+    }
+
+    const hasUserProfile = curr.querySelector('button[aria-label="User Settings"]') || curr.querySelector('[class*="avatar_"]');
+    const hasVoicePanel = curr.querySelector('[class*="rtcConnection_"]') || curr.querySelector('[class*="connection_"]');
+    if (hasUserProfile || hasVoicePanel) {
+      break;
+    }
+
+    highestSafe = curr;
+    curr = curr.parentElement;
+  }
+
+  return highestSafe;
+}
+
 // Inspect bottom-left panel cards specifically to ensure whole quest card container is collapsed
 function checkAndHideQuestPanels() {
   if (!config.enabled || !config.blockQuests) return;
+
   const panelsContainer = document.querySelector('div[class*="panels_"]');
   if (!panelsContainer) return;
 
   for (const card of panelsContainer.children) {
-    if (card.dataset && card.dataset.discordAdblockerBlocked === 'true') continue;
+    if (card.closest && card.closest('[data-discord-adblocker-blocked="true"]')) continue;
 
     // Never hide the user profile panel or RTC voice panel
     const isUserProfile = card.querySelector('button[aria-label="User Settings"]') || card.querySelector('[class*="avatar_"]');
@@ -209,7 +233,9 @@ function checkAndHideQuestPanels() {
                         card.querySelector('[aria-label*="quest" i]');
 
     if (isQuestCard) {
-      card.style.setProperty('display', 'none', 'important');
+      const highestContainer = findHighestSafeQuestContainer(card) || card;
+      highestContainer.style.setProperty('display', 'none', 'important');
+      highestContainer.setAttribute('data-discord-adblocker-blocked', 'true');
       card.setAttribute('data-discord-adblocker-blocked', 'true');
       incrementBlockedCount();
     }
@@ -280,7 +306,7 @@ function setupObserver() {
   // Helper to check if an element is an ad and mark it
   function checkAndMarkAd(el) {
     if (!config.enabled) return;
-    if (el.dataset && el.dataset.discordAdblockerBlocked === 'true') return;
+    if (el.closest && el.closest('[data-discord-adblocker-blocked="true"]')) return;
 
     let matchesAd = false;
 
@@ -314,7 +340,7 @@ function setupObserver() {
       }
     }
 
-    // Coordinate-based and keyword-based popup/tooltip/callout detection (specifically scoped to tooltips and popouts, NOT generic layers)
+    // Coordinate-based and keyword-based popup/tooltip/callout detection
     if (!matchesAd && config.blockPopups && el.matches && (el.matches('[class*="tooltip_"]') || el.matches('[class*="popout_"]'))) {
       const text = (el.textContent || '').toLowerCase();
       const hasPromoKeyword = text.includes('quest') || text.includes('nitro') || text.includes('shop') || text.includes('gift') || text.includes('promotion') || text.includes('subscribe');
@@ -336,11 +362,10 @@ function setupObserver() {
         el.setAttribute('data-discord-adblocker-blocked', 'true');
       }
 
-      // Safely collapse outer direct panel wrapper if inside bottom-left panels_ container and not the user profile
-      const panelWrapper = el.closest && el.closest('div[class*="panels_"] > *');
-      if (panelWrapper && !panelWrapper.querySelector('button[aria-label="User Settings"]') && !panelWrapper.querySelector('[class*="avatar_"]')) {
-        panelWrapper.style.setProperty('display', 'none', 'important');
-        panelWrapper.setAttribute('data-discord-adblocker-blocked', 'true');
+      const highestSafe = findHighestSafeQuestContainer(el);
+      if (highestSafe) {
+        highestSafe.style.setProperty('display', 'none', 'important');
+        highestSafe.setAttribute('data-discord-adblocker-blocked', 'true');
       }
 
       incrementBlockedCount();
