@@ -64,7 +64,7 @@
   align-items: center !important;
   gap: 8px !important;
   width: 100% !important;
-  max-width: 240px !important;
+  max-width: none !important;
 }
 
 .bc-volume-icon {
@@ -79,6 +79,7 @@
 .bc-volume-slider {
   -webkit-appearance: none !important;
   appearance: none !important;
+  flex: 1 !important;
   width: 100% !important;
   height: 4px !important;
   border-radius: 2px !important;
