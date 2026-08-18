@@ -1,0 +1,126 @@
+/* Hide merch, purchase links, download options, and buy buttons */
+.tralbumCommands,
+.buyItem,
+.buyItemDigital,
+.buyItemPhysical,
+.download-col,
+.dl_link,
+.merch-grid,
+#buy-item-grid,
+.merchRow,
+.merch-items,
+.merch-item,
+#carousel-player-wai,
+#collectors-header,
+.collected-by,
+.share-link-container,
+#collect-item-placeholder,
+.gift-card-icon-bordered,
+.listing-purchasable-with-gift-card,
+.fan-container,
+.shopping-cart,
+.sidecart,
+.cart-button,
+.buy-button,
+.download-link,
+#merch-band,
+#grid-merch {
+  display: none !important;
+}
+
+/* Ensure track listing, player, credits, description, license, and tags remain visible */
+#track_table,
+.inline_player,
+.tralbum-about,
+.tralbum-credits,
+.tralbum-tags,
+#license,
+.credits-label,
+.license-label,
+.tags-label {
+  display: block !important;
+}
+
+#track_table {
+  display: table !important;
+  margin-top: 15px !important;
+  margin-bottom: 20px !important;
+}
+
+/* 3-line inline player layout styling */
+.inline_player table {
+  width: 100% !important;
+}
+
+.inline_player td.play_cell {
+  vertical-align: top !important;
+  width: 52px !important;
+}
+
+.inline_player td.volume_cell {
+  padding-top: 6px !important;
+  padding-bottom: 4px !important;
+  vertical-align: middle !important;
+}
+
+.bc-volume-container {
+  display: flex !important;
+  align-items: center !important;
+  gap: 8px !important;
+  width: 100% !important;
+  max-width: 240px !important;
+}
+
+.bc-volume-icon {
+  display: inline-flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  color: #666 !important;
+  cursor: pointer !important;
+  user-select: none !important;
+}
+
+.bc-volume-slider {
+  -webkit-appearance: none !important;
+  appearance: none !important;
+  width: 100% !important;
+  height: 4px !important;
+  border-radius: 2px !important;
+  background: #d8d8d8 !important;
+  outline: none !important;
+  cursor: pointer !important;
+  margin: 0 !important;
+  padding: 0 !important;
+}
+
+.bc-volume-slider::-webkit-slider-thumb {
+  -webkit-appearance: none !important;
+  appearance: none !important;
+  width: 12px !important;
+  height: 12px !important;
+  border-radius: 50% !important;
+  background: #06876d !important;
+  cursor: pointer !important;
+  transition: background 0.15s ease-in-out !important;
+}
+
+.bc-volume-slider::-webkit-slider-thumb:hover {
+  background: #046350 !important;
+}
+
+.bc-volume-slider::-moz-range-thumb {
+  width: 12px !important;
+  height: 12px !important;
+  border-radius: 50% !important;
+  background: #06876d !important;
+  border: none !important;
+  cursor: pointer !important;
+  transition: background 0.15s ease-in-out !important;
+}
+
+.bc-volume-value {
+  font-size: 11px !important;
+  color: #666 !important;
+  min-width: 28px !important;
+  font-family: inherit !important;
+}
