@@ -1,0 +1,32 @@
+{
+  "manifest_version": 3,
+  "name": "Bandcamp Clean Player & Volume Control",
+  "version": "1.0.0",
+  "description": "Removes merch and purchase options on Bandcamp pages, leaving only the music player, track listing, credits, release date, and description, while adding a volume slider.",
+  "permissions": [
+    "storage"
+  ],
+  "host_permissions": [
+    "https://*.bandcamp.com/*",
+    "https://bandcamp.com/*"
+  ],
+  "action": {
+    "default_popup": "popup.html",
+    "default_title": "Bandcamp Clean Player"
+  },
+  "content_scripts": [
+    {
+      "matches": [
+        "https://*.bandcamp.com/*",
+        "https://bandcamp.com/*"
+      ],
+      "css": [
+        "styles.css"
+      ],
+      "js": [
+        "content.js"
+      ],
+      "run_at": "document_end"
+    }
+  ]
+}

@@ -1,0 +1,56 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Bandcamp Clean Player</title>
+  <style>
+    body {
+      width: 260px;
+      margin: 0;
+      padding: 16px;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+      background-color: #222;
+      color: #eee;
+    }
+    h2 {
+      margin: 0 0 8px 0;
+      font-size: 15px;
+      color: #1da0c3;
+    }
+    p {
+      margin: 0 0 12px 0;
+      font-size: 12px;
+      line-height: 1.4;
+      color: #aaa;
+    }
+    .status {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      font-size: 12px;
+      font-weight: 600;
+      color: #4caf50;
+      background: #111;
+      padding: 8px;
+      border-radius: 4px;
+      border: 1px solid #333;
+    }
+    .status-dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background-color: #4caf50;
+    }
+  </style>
+</head>
+<body>
+  <h2>Bandcamp Clean Player</h2>
+  <p>Hides merch and download links on Bandcamp pages while adding a volume control to the music player.</p>
+  <div class="status">
+    <span class="status-dot"></span>
+    <span>Extension Active</span>
+  </div>
+  <script src="popup.js"></script>
+</body>
+</html>
