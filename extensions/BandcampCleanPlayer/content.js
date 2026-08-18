@@ -54,13 +54,13 @@
     const playerTable = document.querySelector('.inline_player table');
     if (!playerTable) return;
 
-    if (playerTable.querySelector('.volume_cell')) {
-      return; // Already initialized
-    }
-
     const playCell = playerTable.querySelector('td.play_cell');
     if (playCell) {
       playCell.setAttribute('rowspan', '3');
+    }
+
+    if (playerTable.querySelector('.volume_cell')) {
+      return; // Already initialized
     }
 
     const volRow = document.createElement('tr');
