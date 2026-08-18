@@ -11,13 +11,9 @@
 .merch-items,
 .merch-item,
 #carousel-player-wai,
-#collectors-header,
-.collected-by,
 .share-link-container,
-#collect-item-placeholder,
 .gift-card-icon-bordered,
 .listing-purchasable-with-gift-card,
-.fan-container,
 .shopping-cart,
 .sidecart,
 .cart-button,
@@ -99,23 +95,27 @@
   width: 12px !important;
   height: 12px !important;
   border-radius: 50% !important;
-  background: #06876d !important;
+  background: #ffffff !important;
   cursor: pointer !important;
   transition: background 0.15s ease-in-out !important;
 }
 
 .bc-volume-slider::-webkit-slider-thumb:hover {
-  background: #046350 !important;
+  background: #e0e0e0 !important;
 }
 
 .bc-volume-slider::-moz-range-thumb {
   width: 12px !important;
   height: 12px !important;
   border-radius: 50% !important;
-  background: #06876d !important;
+  background: #ffffff !important;
   border: none !important;
   cursor: pointer !important;
   transition: background 0.15s ease-in-out !important;
+}
+
+.bc-volume-slider::-moz-range-thumb:hover {
+  background: #e0e0e0 !important;
 }
 
 .bc-volume-value {
