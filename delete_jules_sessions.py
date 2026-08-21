@@ -61,13 +61,15 @@ def load_api_key(cli_key=None, config_path="credentials.json"):
     return None
 
 
-def fetch_all_sessions(api_key, base_url=DEFAULT_BASE_URL):
-    """Fetch all sessions from the Jules API handling pagination."""
+def fetch_sessions_with_query(api_key, query_params="", base_url=DEFAULT_BASE_URL):
+    """Fetch sessions from the Jules API with given query parameters handling pagination."""
     sessions = []
     page_token = None
 
     while True:
         url = f"{base_url.rstrip('/')}/sessions?pageSize=100"
+        if query_params:
+            url += f"&{query_params.lstrip('&')}"
         if page_token:
             url += f"&pageToken={urllib.parse.quote(page_token)}"
 
@@ -84,20 +86,41 @@ def fetch_all_sessions(api_key, base_url=DEFAULT_BASE_URL):
             with urllib.request.urlopen(req) as response:
                 status = getattr(response, "status", 200)
                 if status != 200:
-                    raise RuntimeError(f"API request failed with status code {status}")
+                    break
                 data = json.loads(response.read().decode("utf-8"))
                 current_sessions = data.get("sessions", [])
                 sessions.extend(current_sessions)
                 page_token = data.get("nextPageToken")
                 if not page_token:
                     break
-        except urllib.error.HTTPError as e:
-            error_body = e.read().decode("utf-8") if e.fp else str(e)
-            raise RuntimeError(f"HTTP Error {e.code}: {e.reason}\n{error_body}")
-        except urllib.error.URLError as e:
-            raise RuntimeError(f"URL Error: {e.reason}")
+        except Exception:
+            # Query parameter variant may not be supported by endpoint
+            break
 
     return sessions
+
+
+def fetch_all_sessions(api_key, base_url=DEFAULT_BASE_URL):
+    """Fetch all sessions from the Jules API, attempting multiple query parameters to include archived items."""
+    query_variants = [
+        "",
+        "includeArchived=true",
+        "showArchived=true",
+        "filter=state%3DARCHIVED",
+        "filter=archived%3Dtrue",
+        "filter=is_archived%3Dtrue",
+    ]
+
+    all_sessions_by_key = {}
+
+    for query in query_variants:
+        fetched = fetch_sessions_with_query(api_key, query_params=query, base_url=base_url)
+        for s in fetched:
+            s_key = s.get("name") or s.get("id")
+            if s_key and s_key not in all_sessions_by_key:
+                all_sessions_by_key[s_key] = s
+
+    return list(all_sessions_by_key.values())
 
 
 def parse_timestamp(ts_str):
@@ -125,8 +148,26 @@ def filter_sessions(sessions, days_old=None, state=None, delete_all=False):
 
     for session in target_sessions:
         # State filter
-        if state and session.get("state", "").upper() != state.upper():
-            continue
+        if state:
+            req_state = state.upper()
+            sess_state = str(session.get("state", "")).upper()
+
+            is_archived_flag = (
+                session.get("isArchived") is True
+                or session.get("archived") is True
+                or str(session.get("isArchived")).lower() == "true"
+                or str(session.get("archived")).lower() == "true"
+                or bool(session.get("archivedTime"))
+                or bool(session.get("archiveTime"))
+                or bool(session.get("archived_at"))
+            )
+
+            if req_state == "ARCHIVED":
+                if sess_state not in ("ARCHIVED", "STATE_ARCHIVED", "SESSION_STATE_ARCHIVED") and "ARCHIV" not in sess_state and not is_archived_flag:
+                    continue
+            else:
+                if sess_state != req_state:
+                    continue
 
         # Days old filter
         if days_old is not None:
@@ -176,7 +217,7 @@ def main():
     parser.add_argument("--api-key", help="Jules API key (or set JULES_API_KEY env var / credentials.json)")
     parser.add_argument("--base-url", default=DEFAULT_BASE_URL, help="Base URL for Jules API")
     parser.add_argument("--days-old", type=float, help="Delete sessions created/updated more than N days ago")
-    parser.add_argument("--state", help="Filter by session state (e.g. COMPLETED, FAILED, QUEUED)")
+    parser.add_argument("--state", help="Filter by session state (e.g. COMPLETED, FAILED, QUEUED, ARCHIVED)")
     parser.add_argument("--all", action="store_true", help="Target all sessions (ignores age restriction)")
     parser.add_argument("--dry-run", action="store_true", help="Simulate deletion without deleting anything")
     parser.add_argument("--list-only", action="store_true", help="Only list sessions and exit")
