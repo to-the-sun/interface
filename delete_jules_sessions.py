@@ -31,6 +31,36 @@ from datetime import datetime, timezone, timedelta
 DEFAULT_BASE_URL = "https://jules.googleapis.com/v1alpha"
 
 
+def load_api_key(cli_key=None, config_path="credentials.json"):
+    """Load API key from CLI argument, environment variable, or credentials.json."""
+    if cli_key:
+        return cli_key
+
+    env_key = os.getenv("JULES_API_KEY")
+    if env_key:
+        return env_key
+
+    # Try credentials.json in current directory or script directory
+    search_paths = [config_path]
+    script_dir = os.path.dirname(os.path.abspath(__file__))
+    script_config = os.path.join(script_dir, config_path)
+    if script_config not in search_paths:
+        search_paths.append(script_config)
+
+    for p in search_paths:
+        if os.path.exists(p):
+            try:
+                with open(p, "r", encoding="utf-8") as f:
+                    data = json.load(f)
+                    key = data.get("JULES_API_KEY") or data.get("api_key")
+                    if key and key != "YOUR_API_KEY_HERE":
+                        return key
+            except Exception as e:
+                print(f"Warning: Failed to read credentials from {p}: {e}", file=sys.stderr)
+
+    return None
+
+
 def fetch_all_sessions(api_key, base_url=DEFAULT_BASE_URL):
     """Fetch all sessions from the Jules API handling pagination."""
     sessions = []
@@ -143,7 +173,7 @@ def delete_session(session_name_or_id, api_key, base_url=DEFAULT_BASE_URL):
 
 def main():
     parser = argparse.ArgumentParser(description="Delete old or specified Jules API sessions.")
-    parser.add_argument("--api-key", default=os.getenv("JULES_API_KEY"), help="Jules API key (or set JULES_API_KEY env var)")
+    parser.add_argument("--api-key", help="Jules API key (or set JULES_API_KEY env var / credentials.json)")
     parser.add_argument("--base-url", default=DEFAULT_BASE_URL, help="Base URL for Jules API")
     parser.add_argument("--days-old", type=float, help="Delete sessions created/updated more than N days ago")
     parser.add_argument("--state", help="Filter by session state (e.g. COMPLETED, FAILED, QUEUED)")
@@ -154,13 +184,16 @@ def main():
 
     args = parser.parse_args()
 
-    if not args.api_key:
-        print("Error: API key is required. Set JULES_API_KEY environment variable or pass --api-key.", file=sys.stderr)
+    api_key = load_api_key(args.api_key)
+
+    if not api_key:
+        print("Error: API key is required. Please paste your API key into credentials.json,", file=sys.stderr)
+        print("set the JULES_API_KEY environment variable, or pass --api-key.", file=sys.stderr)
         sys.exit(1)
 
     print("Fetching sessions from Jules API...")
     try:
-        all_sessions = fetch_all_sessions(args.api_key, args.base_url)
+        all_sessions = fetch_all_sessions(api_key, args.base_url)
     except Exception as e:
         print(f"Error fetching sessions: {e}", file=sys.stderr)
         sys.exit(1)
@@ -213,7 +246,7 @@ def main():
     for s in target_sessions:
         s_name = s.get("name") or s.get("id")
         try:
-            delete_session(s_name, args.api_key, args.base_url)
+            delete_session(s_name, api_key, args.base_url)
             print(f"Deleted: {s_name}")
             success_count += 1
         except Exception as e:

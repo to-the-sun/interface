@@ -1,5 +1,7 @@
 import io
 import json
+import os
+import tempfile
 import unittest
 from unittest.mock import MagicMock, patch
 from datetime import datetime, timezone, timedelta
@@ -8,6 +10,27 @@ import delete_jules_sessions as djs
 
 
 class TestDeleteJulesSessions(unittest.TestCase):
+
+    def test_load_api_key_cli(self):
+        key = djs.load_api_key(cli_key="cli_secret")
+        self.assertEqual(key, "cli_secret")
+
+    def test_load_api_key_env(self):
+        with patch.dict(os.environ, {"JULES_API_KEY": "env_secret"}):
+            key = djs.load_api_key()
+            self.assertEqual(key, "env_secret")
+
+    def test_load_api_key_file(self):
+        with tempfile.NamedTemporaryFile("w", delete=False) as f:
+            json.dump({"JULES_API_KEY": "file_secret"}, f)
+            temp_path = f.name
+
+        try:
+            with patch.dict(os.environ, {}, clear=True):
+                key = djs.load_api_key(config_path=temp_path)
+                self.assertEqual(key, "file_secret")
+        finally:
+            os.remove(temp_path)
 
     def test_parse_timestamp(self):
         dt = djs.parse_timestamp("2024-01-15T10:30:00Z")
