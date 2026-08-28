@@ -9,7 +9,7 @@ except Exception:
 
 import numpy as np
 import math
-from audio_compressor import AudioCompressor
+from audio_compressor import AudioCompressor, AudioCompressorApp
 
 class TestAudioCompressor(unittest.TestCase):
     def setUp(self):
@@ -104,6 +104,19 @@ class TestAudioCompressor(unittest.TestCase):
         # Verify clipping ceiling of 0.99
         self.assertLessEqual(float(np.max(out)), 0.990001)
         self.assertGreaterEqual(float(np.min(out)), -0.990001)
+
+    def test_mono_to_stereo_audio_callback(self):
+        mock_app = MagicMock()
+        mock_app.compressor = self.compressor
+        indata = np.full((512, 1), 0.5, dtype=np.float32)
+        outdata = np.zeros((512, 2), dtype=np.float32)
+
+        AudioCompressorApp.audio_callback(mock_app, indata, outdata, 512, None, None)
+
+        # Output should be populated across both Left and Right stereo channels
+        self.assertGreater(float(np.max(outdata[:, 0])), 0.0)
+        self.assertGreater(float(np.max(outdata[:, 1])), 0.0)
+        np.testing.assert_array_equal(outdata[:, 0], outdata[:, 1])
 
 if __name__ == "__main__":
     unittest.main()

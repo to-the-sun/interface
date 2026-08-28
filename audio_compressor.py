@@ -396,7 +396,18 @@ class AudioCompressorApp:
         if status:
             print(f"Stream status warning: {status}")
         processed = self.compressor.process(indata)
-        outdata[:] = processed
+        # Handle mono-to-stereo or channel count mismatches cleanly
+        if processed.shape[1] == outdata.shape[1]:
+            outdata[:] = processed
+        elif processed.shape[1] == 1 and outdata.shape[1] > 1:
+            # Broadcast mono channel across stereo/multi-channel output
+            outdata[:] = np.repeat(processed, outdata.shape[1], axis=1)
+        else:
+            # Map available channels up to output count
+            ch_copy = min(processed.shape[1], outdata.shape[1])
+            outdata[:, :ch_copy] = processed[:, :ch_copy]
+            if outdata.shape[1] > ch_copy:
+                outdata[:, ch_copy:] = 0
 
     def autostart_stream(self):
         if self.input_combo.get() and self.output_combo.get():
@@ -424,14 +435,15 @@ class AudioCompressorApp:
             out_dev_info = sd.query_devices(out_idx)
 
             sr = int(in_dev_info.get('default_samplerate', 44100))
-            ch = min(in_dev_info.get('max_input_channels', 1), out_dev_info.get('max_output_channels', 1), 2)
+            in_ch = min(max(in_dev_info.get('max_input_channels', 1), 1), 2)
+            out_ch = min(max(out_dev_info.get('max_output_channels', 1), 1), 2)
 
             self.compressor.set_sample_rate(sr)
 
             self.stream = sd.Stream(
                 device=(in_idx, out_idx),
                 samplerate=sr,
-                channels=ch,
+                channels=(in_ch, out_ch),
                 dtype='float32',
                 callback=self.audio_callback,
                 blocksize=512
