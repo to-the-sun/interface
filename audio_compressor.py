@@ -20,6 +20,7 @@ DEFAULT_CONFIG = {
     "makeup_gain_db": 3.0,
     "upward_boost_db": 6.0,
     "upward_thresh_db": -45.0,
+    "channel_mode": "Mono",
     "enabled": True,
     "sample_rate": 44100
 }
@@ -170,8 +171,18 @@ class AudioCompressorApp:
 
             in_sel = self.input_combo.get()
             out_sel = self.output_combo.get()
+            sr_sel = self.sr_combo.get()
+            ch_sel = self.ch_combo.get()
+
             self.config["input_device"] = in_sel if in_sel else None
             self.config["output_device"] = out_sel if out_sel else None
+            if sr_sel:
+                try:
+                    self.config["sample_rate"] = int(sr_sel.split(' ')[0])
+                except Exception:
+                    pass
+            if ch_sel:
+                self.config["channel_mode"] = ch_sel
 
             with open(CONFIG_FILE, "w", encoding="utf-8") as f:
                 json.dump(self.config, f, indent=4)
@@ -222,8 +233,21 @@ class AudioCompressorApp:
         self.output_combo = ttk.Combobox(dev_frame, state="readonly", width=55)
         self.output_combo.grid(row=3, column=0, columnspan=2, sticky=tk.EW, pady=(0, 10))
 
+        fmt_frame = ttk.Frame(dev_frame)
+        fmt_frame.grid(row=4, column=0, columnspan=2, sticky=tk.EW, pady=(0, 10))
+
+        ttk.Label(fmt_frame, text="Sample Rate:", font=("Segoe UI", 9, "bold")).pack(side=tk.LEFT, padx=(0, 5))
+        self.sr_combo = ttk.Combobox(fmt_frame, state="readonly", values=["16000 Hz (Voice/Aqua)", "44100 Hz (CD)", "48000 Hz (Studio/Discord)"], width=22)
+        self.sr_combo.set("44100 Hz (CD)")
+        self.sr_combo.pack(side=tk.LEFT, padx=(0, 20))
+
+        ttk.Label(fmt_frame, text="Channel Mode:", font=("Segoe UI", 9, "bold")).pack(side=tk.LEFT, padx=(0, 5))
+        self.ch_combo = ttk.Combobox(fmt_frame, state="readonly", values=["Mono", "Stereo"], width=10)
+        self.ch_combo.set("Mono")
+        self.ch_combo.pack(side=tk.LEFT)
+
         btn_box = ttk.Frame(dev_frame)
-        btn_box.grid(row=4, column=0, columnspan=2, sticky=tk.EW, pady=5)
+        btn_box.grid(row=5, column=0, columnspan=2, sticky=tk.EW, pady=5)
 
         self.start_btn = ttk.Button(btn_box, text="Start Processing", command=self.toggle_stream)
         self.start_btn.pack(side=tk.LEFT, padx=(0, 10))
@@ -324,7 +348,12 @@ class AudioCompressorApp:
             "• Operating systems (Windows Core Audio/WASAPI) strictly separate Hardware Inputs (Microphones) from Outputs (Speakers).\n"
             "• User-level software cannot create system-recognized Input Audio Devices without a registered kernel audio endpoint driver.\n"
             "• A free Virtual Audio Cable (e.g., VB-Audio Cable) provides this driver bridge: select 'CABLE Input' as the Output Device above,\n"
-            "  and select 'CABLE Output' as the Microphone/Input Source inside Aqua Voice, Dragon, Discord, or any other program."
+            "  and select 'CABLE Output' as the Microphone/Input Source inside Aqua Voice, Dragon, Discord, or any other program.\n\n"
+            "Troubleshooting Aqua Voice / Speech Recognition Apps:\n"
+            "• Speech recognition engines like Aqua Voice or Dragon require Mono 16kHz or 44.1kHz audio.\n"
+            "• Set Channel Mode above to 'Mono' and Sample Rate to 44100 Hz or 16000 Hz.\n"
+            "• Open Windows Control Panel -> Sound -> Recording -> Right-click 'CABLE Output' -> Properties -> Advanced tab,\n"
+            "  and set Default Format to '1 channel, 16 bit, 44100 Hz (CD Quality)' or '1 channel, 16 bit, 16000 Hz'."
         )
         guide_lbl = ttk.Label(guide_frame, text=guide_text, font=("Segoe UI", 8), justify=tk.LEFT)
         guide_lbl.pack(anchor=tk.W)
@@ -372,6 +401,8 @@ class AudioCompressorApp:
             # Preserve previous selections or pick default
             saved_in = self.config.get("input_device")
             saved_out = self.config.get("output_device")
+            saved_sr = self.config.get("sample_rate")
+            saved_ch = self.config.get("channel_mode")
 
             if saved_in and saved_in in in_values:
                 self.input_combo.set(saved_in)
@@ -388,6 +419,14 @@ class AudioCompressorApp:
                 default_out = sd.default.device[1]
                 matched = [lbl for idx, lbl in self.output_devices if idx == default_out]
                 self.output_combo.set(matched[0] if matched else out_values[0])
+
+            if saved_sr:
+                sr_match = [v for v in self.sr_combo['values'] if str(saved_sr) in v]
+                if sr_match:
+                    self.sr_combo.set(sr_match[0])
+
+            if saved_ch and saved_ch in self.ch_combo['values']:
+                self.ch_combo.set(saved_ch)
 
         except Exception as e:
             messagebox.showerror("Error", f"Failed to refresh audio devices:\n{e}")
@@ -422,6 +461,8 @@ class AudioCompressorApp:
     def start_stream(self):
         in_sel = self.input_combo.get()
         out_sel = self.output_combo.get()
+        sr_sel = self.sr_combo.get()
+        ch_sel = self.ch_combo.get()
 
         if not in_sel or not out_sel:
             messagebox.showwarning("Device Selection Required", "Please select both an Input and an Output audio device.")
@@ -434,15 +475,27 @@ class AudioCompressorApp:
             in_dev_info = sd.query_devices(in_idx)
             out_dev_info = sd.query_devices(out_idx)
 
-            sr = int(in_dev_info.get('default_samplerate', 44100))
-            in_ch = min(max(in_dev_info.get('max_input_channels', 1), 1), 2)
-            out_ch = min(max(out_dev_info.get('max_output_channels', 1), 1), 2)
+            # Determine sample rate
+            target_sr = 44100
+            if sr_sel:
+                try:
+                    target_sr = int(sr_sel.split(' ')[0])
+                except Exception:
+                    target_sr = int(in_dev_info.get('default_samplerate', 44100))
 
-            self.compressor.set_sample_rate(sr)
+            # Determine channel counts based on selection
+            want_mono = (ch_sel == "Mono")
+            max_in_ch = max(in_dev_info.get('max_input_channels', 1), 1)
+            max_out_ch = max(out_dev_info.get('max_output_channels', 1), 1)
+
+            in_ch = 1 if want_mono else min(max_in_ch, 2)
+            out_ch = 1 if want_mono else min(max_out_ch, 2)
+
+            self.compressor.set_sample_rate(target_sr)
 
             self.stream = sd.Stream(
                 device=(in_idx, out_idx),
-                samplerate=sr,
+                samplerate=target_sr,
                 channels=(in_ch, out_ch),
                 dtype='float32',
                 callback=self.audio_callback,
@@ -450,7 +503,8 @@ class AudioCompressorApp:
             )
             self.stream.start()
             self.start_btn.config(text="Stop Processing")
-            self.status_lbl.config(text=f"Status: Streaming ({in_dev_info['name']} -> {out_dev_info['name']} @ {sr}Hz)")
+            mode_str = "Mono" if want_mono else "Stereo"
+            self.status_lbl.config(text=f"Status: Streaming ({in_dev_info['name']} -> {out_dev_info['name']} @ {target_sr}Hz {mode_str})")
         except Exception as e:
             self.stream = None
             self.start_btn.config(text="Start Processing")
