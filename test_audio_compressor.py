@@ -29,14 +29,32 @@ class TestAudioCompressor(unittest.TestCase):
         self.assertEqual(self.compressor.current_gr_db, 0.0)
 
     def test_signal_below_threshold_uncompressed(self):
-        # -30 dB signal (below -20 dB threshold)
+        # -30 dB signal (below -20 dB threshold) with upward boost disabled
+        self.compressor.upward_boost_db = 0.0
         amp = 10.0 ** (-30.0 / 20.0)
         signal = np.full((512, 1), amp, dtype=np.float32)
         out = self.compressor.process(signal)
 
-        # Output should equal input because makeup gain is 0 and no compression occurs
+        # Output should equal input because makeup gain and upward boost are 0
         np.testing.assert_allclose(out, signal, rtol=1e-4)
         self.assertEqual(self.compressor.current_gr_db, 0.0)
+
+    def test_upward_compression_quiet_signal_boost(self):
+        # Enable quiet signal boost (+6 dB) for quiet speech at -30 dB
+        self.compressor.upward_boost_db = 6.0
+        self.compressor.upward_thresh_db = -45.0
+        self.compressor.threshold_db = -20.0
+
+        amp = 10.0 ** (-30.0 / 20.0)
+        signal = np.full((512, 1), amp, dtype=np.float32)
+
+        # Process blocks to allow envelope to settle
+        for _ in range(10):
+            out = self.compressor.process(signal)
+
+        # Output amplitude should be boosted above raw input amplitude
+        out_peak = float(np.max(np.abs(out)))
+        self.assertGreater(out_peak, amp)
 
     def test_signal_above_threshold_compressed(self):
         # 0 dB signal (above -20 dB threshold)
@@ -67,6 +85,7 @@ class TestAudioCompressor(unittest.TestCase):
 
     def test_makeup_gain(self):
         self.compressor.threshold_db = 0.0  # no compression
+        self.compressor.upward_boost_db = 0.0 # no upward boost
         self.compressor.makeup_gain_db = 6.0 # +6 dB (~2x amplitude)
 
         amp = 0.2

@@ -18,14 +18,17 @@ DEFAULT_CONFIG = {
     "attack_ms": 10.0,
     "release_ms": 100.0,
     "makeup_gain_db": 3.0,
+    "upward_boost_db": 6.0,
+    "upward_thresh_db": -45.0,
     "enabled": True,
     "sample_rate": 44100
 }
 
 class AudioCompressor:
     """
-    Real-time dynamic range audio compressor with envelope follower,
-    gain reduction, makeup gain, and peak limiter.
+    Real-time dynamic range audio compressor supporting both downward compression
+    (reducing loud peaks) and upward compression (boosting quiet speech signals),
+    with envelope follower, makeup gain, and peak limiter.
     """
     def __init__(self, sample_rate=44100):
         self.sample_rate = sample_rate
@@ -35,6 +38,8 @@ class AudioCompressor:
         self.attack_ms = 10.0
         self.release_ms = 100.0
         self.makeup_gain_db = 3.0
+        self.upward_boost_db = 6.0
+        self.upward_thresh_db = -45.0
 
         self._envelope_db = -100.0
         self.current_in_db = -100.0
@@ -79,16 +84,25 @@ class AudioCompressor:
             else:
                 env = alpha_rel * env + (1.0 - alpha_rel) * samp_db
 
-            if self.enabled and env > self.threshold_db:
-                over_db = env - self.threshold_db
-                gr_db = over_db * (1.0 - 1.0 / max(self.ratio, 1.0))
-            else:
-                gr_db = 0.0
+            gr_db = 0.0
+            upward_gain_db = 0.0
+
+            if self.enabled:
+                # Downward compression for loud signals above threshold_db
+                if env > self.threshold_db:
+                    over_db = env - self.threshold_db
+                    gr_db = over_db * (1.0 - 1.0 / max(self.ratio, 1.0))
+
+                # Upward compression for quiet speech between upward_thresh_db and threshold_db
+                if env > self.upward_thresh_db and env < self.threshold_db and self.upward_boost_db > 0:
+                    under_db = self.threshold_db - env
+                    range_db = max(self.threshold_db - self.upward_thresh_db, 1.0)
+                    upward_gain_db = self.upward_boost_db * (under_db / range_db)
 
             if gr_db > max_gr_this_block:
                 max_gr_this_block = gr_db
 
-            total_gain_db = (self.makeup_gain_db - gr_db) if self.enabled else 0.0
+            total_gain_db = (self.makeup_gain_db + upward_gain_db - gr_db) if self.enabled else 0.0
             gain_lin = 10.0 ** (total_gain_db / 20.0)
 
             outdata[i] = indata[i] * gain_lin
@@ -151,6 +165,7 @@ class AudioCompressorApp:
             self.config["attack_ms"] = self.compressor.attack_ms
             self.config["release_ms"] = self.compressor.release_ms
             self.config["makeup_gain_db"] = self.compressor.makeup_gain_db
+            self.config["upward_boost_db"] = self.compressor.upward_boost_db
             self.config["enabled"] = self.compressor.enabled
 
             in_sel = self.input_combo.get()
@@ -169,6 +184,7 @@ class AudioCompressorApp:
         self.compressor.attack_ms = float(self.config.get("attack_ms", 10.0))
         self.compressor.release_ms = float(self.config.get("release_ms", 100.0))
         self.compressor.makeup_gain_db = float(self.config.get("makeup_gain_db", 3.0))
+        self.compressor.upward_boost_db = float(self.config.get("upward_boost_db", 6.0))
         self.compressor.enabled = bool(self.config.get("enabled", True))
 
     def build_ui(self):
@@ -287,18 +303,28 @@ class AudioCompressorApp:
         self.gain_lbl = ttk.Label(comp_frame, text=f"{self.compressor.makeup_gain_db:.1f} dB", width=8)
         self.gain_lbl.grid(row=5, column=2, sticky=tk.E)
 
+        # Quiet Signal Boost / Upward Compression Slider (0 to 20 dB)
+        ttk.Label(comp_frame, text="Quiet Signal Boost (dB):").grid(row=6, column=0, sticky=tk.W, pady=3)
+        self.upward_scale = ttk.Scale(comp_frame, from_=0.0, to=20.0, value=self.compressor.upward_boost_db, command=self.on_upward_change)
+        self.upward_scale.grid(row=6, column=1, sticky=tk.EW, padx=10)
+        self.upward_lbl = ttk.Label(comp_frame, text=f"{self.compressor.upward_boost_db:.1f} dB", width=8)
+        self.upward_lbl.grid(row=6, column=2, sticky=tk.E)
+
         comp_frame.columnconfigure(1, weight=1)
 
-        # Quick Guidance Box
-        guide_frame = ttk.LabelFrame(main_frame, text=" Virtual Audio Setup Guidance ", padding="10")
+        # Virtual Audio Cable Detection & Guidance Box
+        guide_frame = ttk.LabelFrame(main_frame, text=" Virtual Audio Input Source Setup ", padding="10")
         guide_frame.pack(fill=tk.X, pady=(0, 5))
 
+        self.vcable_status_lbl = ttk.Label(guide_frame, text="", font=("Segoe UI", 9, "bold"))
+        self.vcable_status_lbl.pack(anchor=tk.W, pady=(0, 4))
+
         guide_text = (
-            "To send compressed audio to Discord, Aqua Voice, Dragon, etc.:\n"
-            "1. Install a free Virtual Cable (e.g. VB-Audio Virtual Cable).\n"
-            "2. Select your microphone (e.g. NVIDIA Broadcast) as the Input Device above.\n"
-            "3. Select 'CABLE Input (VB-Audio Virtual Cable)' as the Output Device above.\n"
-            "4. In Discord/Aqua Voice/Dragon, set Input Device to 'CABLE Output'."
+            "Why is a Virtual Audio Cable required to act as an input source for other apps?\n"
+            "• Operating systems (Windows Core Audio/WASAPI) strictly separate Hardware Inputs (Microphones) from Outputs (Speakers).\n"
+            "• User-level software cannot create system-recognized Input Audio Devices without a registered kernel audio endpoint driver.\n"
+            "• A free Virtual Audio Cable (e.g., VB-Audio Cable) provides this driver bridge: select 'CABLE Input' as the Output Device above,\n"
+            "  and select 'CABLE Output' as the Microphone/Input Source inside Aqua Voice, Dragon, Discord, or any other program."
         )
         guide_lbl = ttk.Label(guide_frame, text=guide_text, font=("Segoe UI", 8), justify=tk.LEFT)
         guide_lbl.pack(anchor=tk.W)
@@ -329,6 +355,19 @@ class AudioCompressorApp:
 
             self.input_combo['values'] = in_values
             self.output_combo['values'] = out_values
+
+            # Check for virtual cable presence
+            has_vcable = any("cable" in label.lower() or "vb-audio" in label.lower() or "voicemeeter" in label.lower() for label in out_values)
+            if has_vcable:
+                self.vcable_status_lbl.config(
+                    text="✔ Virtual Audio Cable Detected! Ready to route audio to Discord, Aqua Voice, Dragon, etc.",
+                    foreground="#2e7d32"
+                )
+            else:
+                self.vcable_status_lbl.config(
+                    text="⚠ No Virtual Audio Cable detected. Please install a driver (e.g. VB-Audio Cable) to output to other apps.",
+                    foreground="#d32f2f"
+                )
 
             # Preserve previous selections or pick default
             saved_in = self.config.get("input_device")
@@ -448,6 +487,11 @@ class AudioCompressorApp:
         val_f = float(val)
         self.compressor.makeup_gain_db = val_f
         self.gain_lbl.config(text=f"{val_f:.1f} dB")
+
+    def on_upward_change(self, val):
+        val_f = float(val)
+        self.compressor.upward_boost_db = val_f
+        self.upward_lbl.config(text=f"{val_f:.1f} dB")
 
     def draw_meter_bar(self, canvas, db_value, min_db=-60.0, max_db=0.0, bar_color="#00e676"):
         canvas.delete("all")
