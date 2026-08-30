@@ -1,0 +1,30 @@
+{
+  "manifest_version": 3,
+  "name": "Jules.google.com Scrollbar Enhancer",
+  "version": "1.0.0",
+  "description": "Modifies jules.google.com panels to feature prominent, relatively big scrollbars with clickable top and bottom arrows.",
+  "permissions": [
+    "storage"
+  ],
+  "host_permissions": [
+    "https://jules.google.com/*"
+  ],
+  "action": {
+    "default_popup": "popup.html",
+    "default_title": "Jules Scrollbar Options"
+  },
+  "content_scripts": [
+    {
+      "matches": [
+        "https://jules.google.com/*"
+      ],
+      "css": [
+        "styles.css"
+      ],
+      "js": [
+        "content.js"
+      ],
+      "run_at": "document_start"
+    }
+  ]
+}
