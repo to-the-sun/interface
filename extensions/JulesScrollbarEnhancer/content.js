@@ -38,15 +38,6 @@
         width: ${size} !important;
         height: ${size} !important;
       }
-      ::-webkit-scrollbar:disabled,
-      ::-webkit-scrollbar-button:disabled,
-      ::-webkit-scrollbar-track:disabled,
-      ::-webkit-scrollbar-thumb:disabled {
-        display: none !important;
-      }
-      ::-webkit-scrollbar-button {
-        display: block !important;
-      }
       ::-webkit-scrollbar-button:single-button:vertical {
         height: ${size} !important;
         width: ${size} !important;
@@ -106,7 +97,7 @@
     }
   }
 
-  // Observe DOM additions for Shadow DOM roots or dynamic element mounts
+  // Observe DOM additions for Shadow DOM styling
   const observer = new MutationObserver(() => {
     if (currentSettings.enabled) {
       applyStylesToShadowRoots(document);
