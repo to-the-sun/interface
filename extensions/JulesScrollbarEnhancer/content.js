@@ -42,13 +42,18 @@
       ::-webkit-scrollbar-button {
         display: block !important;
       }
-      ::-webkit-scrollbar-button:vertical {
+      ::-webkit-scrollbar-button:single-button:vertical {
         height: ${size} !important;
         width: ${size} !important;
       }
-      ::-webkit-scrollbar-button:horizontal {
+      ::-webkit-scrollbar-button:single-button:horizontal {
         height: ${size} !important;
         width: ${size} !important;
+      }
+      ::-webkit-scrollbar-button:double-button,
+      ::-webkit-scrollbar-button:start:increment,
+      ::-webkit-scrollbar-button:end:decrement {
+        display: none !important;
       }
     `;
   }

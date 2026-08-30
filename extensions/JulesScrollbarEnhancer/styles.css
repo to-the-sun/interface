@@ -1,41 +1,31 @@
 /* Custom Scrollbars for jules.google.com */
 :root {
   --jules-scrollbar-size: 18px;
-  --jules-scrollbar-track-bg: #f1f3f4;
-  --jules-scrollbar-thumb-bg: #9aa0a6;
-  --jules-scrollbar-thumb-hover-bg: #70757a;
-  --jules-scrollbar-thumb-active-bg: #5f6368;
-  --jules-scrollbar-button-bg: #e8eaed;
-  --jules-scrollbar-button-border: #dadce0;
-  --jules-scrollbar-button-hover-bg: #d2d6dc;
-  --jules-scrollbar-button-active-bg: #bdc1c6;
+  --jules-scrollbar-track-bg: #1e1f22;
+  --jules-scrollbar-thumb-bg: #444746;
+  --jules-scrollbar-thumb-hover-bg: #5e6160;
+  --jules-scrollbar-thumb-active-bg: #757775;
+  --jules-scrollbar-button-bg: #28292c;
+  --jules-scrollbar-button-border: #3c4043;
+  --jules-scrollbar-button-hover-bg: #35373a;
+  --jules-scrollbar-button-active-bg: #424549;
+  --jules-scrollbar-arrow-color: %23e3e3e3;
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --jules-scrollbar-track-bg: #1e1f22;
-    --jules-scrollbar-thumb-bg: #4e5058;
-    --jules-scrollbar-thumb-hover-bg: #6d6f78;
-    --jules-scrollbar-thumb-active-bg: #80848e;
-    --jules-scrollbar-button-bg: #2b2d31;
-    --jules-scrollbar-button-border: #383a40;
-    --jules-scrollbar-button-hover-bg: #35373c;
-    --jules-scrollbar-button-active-bg: #404249;
-  }
-}
-
-html[data-theme="dark"],
-html.dark,
-body.dark,
-[data-theme="dark"] {
+/* Jules dark theme color overrides */
+html,
+body,
+:root,
+[data-theme="dark"],
+.dark {
   --jules-scrollbar-track-bg: #1e1f22 !important;
-  --jules-scrollbar-thumb-bg: #4e5058 !important;
-  --jules-scrollbar-thumb-hover-bg: #6d6f78 !important;
-  --jules-scrollbar-thumb-active-bg: #80848e !important;
-  --jules-scrollbar-button-bg: #2b2d31 !important;
-  --jules-scrollbar-button-border: #383a40 !important;
-  --jules-scrollbar-button-hover-bg: #35373c !important;
-  --jules-scrollbar-button-active-bg: #404249 !important;
+  --jules-scrollbar-thumb-bg: #444746 !important;
+  --jules-scrollbar-thumb-hover-bg: #5e6160 !important;
+  --jules-scrollbar-thumb-active-bg: #757775 !important;
+  --jules-scrollbar-button-bg: #28292c !important;
+  --jules-scrollbar-button-border: #3c4043 !important;
+  --jules-scrollbar-button-hover-bg: #35373a !important;
+  --jules-scrollbar-button-active-bg: #424549 !important;
 }
 
 /* Force standard visible scrollbars across all elements and panels */
@@ -54,117 +44,95 @@ body.dark,
 
 /* Track background */
 ::-webkit-scrollbar-track {
-  background-color: var(--jules-scrollbar-track-bg, #f1f3f4) !important;
+  background-color: var(--jules-scrollbar-track-bg, #1e1f22) !important;
   border-radius: 0px !important;
 }
 
 ::-webkit-scrollbar-track:piece {
-  background-color: var(--jules-scrollbar-track-bg, #f1f3f4) !important;
+  background-color: var(--jules-scrollbar-track-bg, #1e1f22) !important;
 }
 
 /* Scrollbar thumb (draggable handle) */
 ::-webkit-scrollbar-thumb {
-  background-color: var(--jules-scrollbar-thumb-bg, #9aa0a6) !important;
+  background-color: var(--jules-scrollbar-thumb-bg, #444746) !important;
   border-radius: 4px !important;
-  border: 2px solid var(--jules-scrollbar-track-bg, #f1f3f4) !important;
+  border: 2px solid var(--jules-scrollbar-track-bg, #1e1f22) !important;
   min-height: 24px !important;
   min-width: 24px !important;
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  background-color: var(--jules-scrollbar-thumb-hover-bg, #70757a) !important;
+  background-color: var(--jules-scrollbar-thumb-hover-bg, #5e6160) !important;
 }
 
 ::-webkit-scrollbar-thumb:active {
-  background-color: var(--jules-scrollbar-thumb-active-bg, #5f6368) !important;
+  background-color: var(--jules-scrollbar-thumb-active-bg, #757775) !important;
 }
 
-/* Scrollbar buttons (clickable top/bottom/left/right arrows) */
+/* Scrollbar buttons (single clickable arrow button at top and bottom) */
 ::-webkit-scrollbar-button {
   display: block !important;
-  background-color: var(--jules-scrollbar-button-bg, #e8eaed) !important;
+  background-color: var(--jules-scrollbar-button-bg, #28292c) !important;
   background-repeat: no-repeat !important;
   background-position: center !important;
   background-size: 10px 10px !important;
-  border: 1px solid var(--jules-scrollbar-button-border, #dadce0) !important;
+  border: 1px solid var(--jules-scrollbar-button-border, #3c4043) !important;
   box-sizing: border-box !important;
 }
 
-::-webkit-scrollbar-button:vertical {
+/* Hide multi/double buttons to guarantee exactly 1 top arrow and 1 bottom arrow */
+::-webkit-scrollbar-button:double-button,
+::-webkit-scrollbar-button:start:increment,
+::-webkit-scrollbar-button:end:decrement {
+  display: none !important;
+}
+
+::-webkit-scrollbar-button:single-button:vertical {
   height: var(--jules-scrollbar-size, 18px) !important;
   width: var(--jules-scrollbar-size, 18px) !important;
 }
 
-::-webkit-scrollbar-button:horizontal {
+::-webkit-scrollbar-button:single-button:horizontal {
   height: var(--jules-scrollbar-size, 18px) !important;
   width: var(--jules-scrollbar-size, 18px) !important;
 }
 
 ::-webkit-scrollbar-button:hover {
-  background-color: var(--jules-scrollbar-button-hover-bg, #d2d6dc) !important;
+  background-color: var(--jules-scrollbar-button-hover-bg, #35373a) !important;
   cursor: pointer !important;
 }
 
 ::-webkit-scrollbar-button:active {
-  background-color: var(--jules-scrollbar-button-active-bg, #bdc1c6) !important;
+  background-color: var(--jules-scrollbar-button-active-bg, #424549) !important;
 }
 
-/* Top Arrow Button (Decrement Vertical) */
-::-webkit-scrollbar-button:vertical:decrement {
-  background-image: url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24"><path fill="%233c4043" d="M12 8l-6 6h12z"/></svg>') !important;
+/* Single Top Arrow Button (Up Arrow at start) */
+::-webkit-scrollbar-button:single-button:vertical:decrement {
+  display: block !important;
+  background-image: url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24"><path fill="%23e3e3e3" d="M12 8l-6 6h12z"/></svg>') !important;
 }
 
-/* Bottom Arrow Button (Increment Vertical) */
-::-webkit-scrollbar-button:vertical:increment {
-  background-image: url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24"><path fill="%233c4043" d="M12 16l6-6H6z"/></svg>') !important;
+/* Single Bottom Arrow Button (Down Arrow at end) */
+::-webkit-scrollbar-button:single-button:vertical:increment {
+  display: block !important;
+  background-image: url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24"><path fill="%23e3e3e3" d="M12 16l6-6H6z"/></svg>') !important;
 }
 
-/* Left Arrow Button (Decrement Horizontal) */
-::-webkit-scrollbar-button:horizontal:decrement {
-  background-image: url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24"><path fill="%233c4043" d="M14 6l-6 6 6 6V6z"/></svg>') !important;
+/* Single Left Arrow Button (Left Arrow at start) */
+::-webkit-scrollbar-button:single-button:horizontal:decrement {
+  display: block !important;
+  background-image: url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24"><path fill="%23e3e3e3" d="M14 6l-6 6 6 6V6z"/></svg>') !important;
 }
 
-/* Right Arrow Button (Increment Horizontal) */
-::-webkit-scrollbar-button:horizontal:increment {
-  background-image: url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24"><path fill="%233c4043" d="M10 6l6 6-6 6V6z"/></svg>') !important;
-}
-
-/* Dark mode arrow icon overrides */
-@media (prefers-color-scheme: dark) {
-  ::-webkit-scrollbar-button:vertical:decrement {
-    background-image: url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24"><path fill="%23e3e5e8" d="M12 8l-6 6h12z"/></svg>') !important;
-  }
-
-  ::-webkit-scrollbar-button:vertical:increment {
-    background-image: url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24"><path fill="%23e3e5e8" d="M12 16l6-6H6z"/></svg>') !important;
-  }
-
-  ::-webkit-scrollbar-button:horizontal:decrement {
-    background-image: url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24"><path fill="%23e3e5e8" d="M14 6l-6 6 6 6V6z"/></svg>') !important;
-  }
-
-  ::-webkit-scrollbar-button:horizontal:increment {
-    background-image: url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24"><path fill="%23e3e5e8" d="M10 6l6 6-6 6V6z"/></svg>') !important;
-  }
-}
-
-html[data-theme="dark"] ::-webkit-scrollbar-button:vertical:decrement,
-html.dark ::-webkit-scrollbar-button:vertical:decrement,
-body.dark ::-webkit-scrollbar-button:vertical:decrement,
-[data-theme="dark"] ::-webkit-scrollbar-button:vertical:decrement {
-  background-image: url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24"><path fill="%23e3e5e8" d="M12 8l-6 6h12z"/></svg>') !important;
-}
-
-html[data-theme="dark"] ::-webkit-scrollbar-button:vertical:increment,
-html.dark ::-webkit-scrollbar-button:vertical:increment,
-body.dark ::-webkit-scrollbar-button:vertical:increment,
-[data-theme="dark"] ::-webkit-scrollbar-button:vertical:increment {
-  background-image: url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24"><path fill="%23e3e5e8" d="M12 16l6-6H6z"/></svg>') !important;
+/* Single Right Arrow Button (Right Arrow at end) */
+::-webkit-scrollbar-button:single-button:horizontal:increment {
+  display: block !important;
+  background-image: url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24"><path fill="%23e3e3e3" d="M10 6l6 6-6 6V6z"/></svg>') !important;
 }
 
 /* Scrollbar corner where horizontal and vertical bars meet */
 ::-webkit-scrollbar-corner {
-  background-color: var(--jules-scrollbar-track-bg, #f1f3f4) !important;
+  background-color: var(--jules-scrollbar-track-bg, #1e1f22) !important;
 }
 
 /* Disabled button states */
