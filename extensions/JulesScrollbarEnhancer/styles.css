@@ -39,7 +39,14 @@ body,
 ::-webkit-scrollbar {
   width: var(--jules-scrollbar-size, 18px) !important;
   height: var(--jules-scrollbar-size, 18px) !important;
-  display: block !important;
+}
+
+/* Hide scrollbars when disabled (content fits without scrolling) */
+::-webkit-scrollbar:disabled,
+::-webkit-scrollbar-button:disabled,
+::-webkit-scrollbar-track:disabled,
+::-webkit-scrollbar-thumb:disabled {
+  display: none !important;
 }
 
 /* Track background */
@@ -71,7 +78,7 @@ body,
 
 /* Scrollbar buttons (single clickable arrow button at top and bottom) */
 ::-webkit-scrollbar-button {
-  display: block !important;
+  display: block;
   background-color: var(--jules-scrollbar-button-bg, #28292c) !important;
   background-repeat: no-repeat !important;
   background-position: center !important;
@@ -108,25 +115,25 @@ body,
 
 /* Single Top Arrow Button (Up Arrow at start) */
 ::-webkit-scrollbar-button:single-button:vertical:decrement {
-  display: block !important;
+  display: block;
   background-image: url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24"><path fill="%23e3e3e3" d="M12 8l-6 6h12z"/></svg>') !important;
 }
 
 /* Single Bottom Arrow Button (Down Arrow at end) */
 ::-webkit-scrollbar-button:single-button:vertical:increment {
-  display: block !important;
+  display: block;
   background-image: url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24"><path fill="%23e3e3e3" d="M12 16l6-6H6z"/></svg>') !important;
 }
 
 /* Single Left Arrow Button (Left Arrow at start) */
 ::-webkit-scrollbar-button:single-button:horizontal:decrement {
-  display: block !important;
+  display: block;
   background-image: url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24"><path fill="%23e3e3e3" d="M14 6l-6 6 6 6V6z"/></svg>') !important;
 }
 
 /* Single Right Arrow Button (Right Arrow at end) */
 ::-webkit-scrollbar-button:single-button:horizontal:increment {
-  display: block !important;
+  display: block;
   background-image: url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24"><path fill="%23e3e3e3" d="M10 6l6 6-6 6V6z"/></svg>') !important;
 }
 

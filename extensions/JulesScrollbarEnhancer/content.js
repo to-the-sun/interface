@@ -37,10 +37,15 @@
       ::-webkit-scrollbar {
         width: ${size} !important;
         height: ${size} !important;
-        display: block !important;
       }
       ::-webkit-scrollbar-button {
-        display: block !important;
+        display: block;
+      }
+      ::-webkit-scrollbar:disabled,
+      ::-webkit-scrollbar-button:disabled,
+      ::-webkit-scrollbar-track:disabled,
+      ::-webkit-scrollbar-thumb:disabled {
+        display: none !important;
       }
       ::-webkit-scrollbar-button:single-button:vertical {
         height: ${size} !important;
