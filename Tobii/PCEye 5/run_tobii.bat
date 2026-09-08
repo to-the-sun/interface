@@ -44,16 +44,21 @@ if %ERRORLEVEL% equ 0 (
 echo System Python 3.10 not detected. Downloading portable Python 3.10 embeddable package...
 set "ZIP_PATH=%TEMP%\python-3.10.11-embed-amd64.zip"
 set "GET_PIP_PATH=%TEMP%\get-pip.py"
+set "ZIP_URL=https://www.python.org/ftp/python/3.10.11/python-3.10.11-embed-amd64.zip"
 
-powershell -Command "[Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12; Write-Host 'Downloading Python 3.10.11 zip...'; Invoke-WebRequest -Uri 'https://www.python.org/ftp/python/3.10.11/python-3.10.11-embed-amd64.zip' -OutFile '%ZIP_PATH%'"
-if %ERRORLEVEL% neq 0 (
+curl.exe -sSL "%ZIP_URL%" -o "%ZIP_PATH%" 2>nul
+if not exist "%ZIP_PATH%" (
+    powershell -Command "[Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12; Invoke-WebRequest -Uri $env:ZIP_URL -OutFile $env:ZIP_PATH"
+)
+
+if not exist "%ZIP_PATH%" (
     echo ERROR: Failed to download portable Python 3.10 package.
     pause
     exit /b 1
 )
 
 echo Extracting portable Python 3.10 package to %ENV_DIR%...
-powershell -Command "Expand-Archive -Path '%ZIP_PATH%' -DestinationPath '%ENV_DIR%' -Force"
+powershell -Command "Expand-Archive -LiteralPath $env:ZIP_PATH -DestinationPath $env:ENV_DIR -Force"
 if %ERRORLEVEL% neq 0 (
     echo ERROR: Failed to extract Python 3.10 package.
     pause
@@ -62,12 +67,26 @@ if %ERRORLEVEL% neq 0 (
 
 :: Enable site-packages in python310._pth
 if exist "%ENV_DIR%\python310._pth" (
-    powershell -Command "(Get-Content '%ENV_DIR%\python310._pth') -replace '#import site', 'import site' | Set-Content '%ENV_DIR%\python310._pth'"
+    powershell -Command "$pth = Join-Path $env:ENV_DIR 'python310._pth'; if (Test-Path -LiteralPath $pth) { (Get-Content -LiteralPath $pth) -replace '#import site', 'import site' | Set-Content -LiteralPath $pth }"
 )
 
 echo Downloading get-pip.py...
-powershell -Command "[Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12; Invoke-WebRequest -Uri 'https://bootstrap.pypa.gov/get-pip.py' -OutFile '%GET_PIP_PATH%'"
-if %ERRORLEVEL% neq 0 (
+set "PIP_DOWNLOADED=0"
+
+curl.exe -sSL "https://bootstrap.pypa.gov/get-pip.py" -o "%GET_PIP_PATH%" 2>nul
+if exist "%GET_PIP_PATH%" set "PIP_DOWNLOADED=1"
+
+if "!PIP_DOWNLOADED!"=="0" (
+    curl.exe -sSL "https://raw.githubusercontent.com/pypa/get-pip/main/public/get-pip.py" -o "%GET_PIP_PATH%" 2>nul
+    if exist "%GET_PIP_PATH%" set "PIP_DOWNLOADED=1"
+)
+
+if "!PIP_DOWNLOADED!"=="0" (
+    powershell -Command "[Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12; try { Invoke-WebRequest -Uri 'https://bootstrap.pypa.gov/get-pip.py' -OutFile $env:GET_PIP_PATH } catch { try { Invoke-WebRequest -Uri 'https://raw.githubusercontent.com/pypa/get-pip/main/public/get-pip.py' -OutFile $env:GET_PIP_PATH } catch { Invoke-WebRequest -Uri 'https://pip.pypa.io/get-pip.py' -OutFile $env:GET_PIP_PATH } }"
+    if exist "%GET_PIP_PATH%" set "PIP_DOWNLOADED=1"
+)
+
+if "!PIP_DOWNLOADED!"=="0" (
     echo ERROR: Failed to download get-pip.py.
     pause
     exit /b 1
