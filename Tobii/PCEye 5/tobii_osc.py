@@ -1,9 +1,38 @@
+import sys
 import time
 import math
-import tobii_research as tr
-from pythonosc import udp_client
 import argparse
-import sys
+
+try:
+    import tobii_research as tr
+except (ImportError, ModuleNotFoundError):
+    py_ver = f"{sys.version_info.major}.{sys.version_info.minor}.{sys.version_info.micro}"
+    print("=" * 72)
+    print("ERROR: Failed to import 'tobii_research'.")
+    print(f"Current Python version: {py_ver}")
+    print("\n'tobii-research' (Tobii Pro SDK) only provides pre-compiled wheels")
+    print("on PyPI for Python 3.10 (and 3.8) 64-bit.")
+    print("It does NOT support Python 3.11, 3.12, or newer versions.")
+    print("\nPlease ensure you are running Python 3.10 (64-bit):")
+    print("  1. Download Python 3.10: https://www.python.org/downloads/release/python-31011/")
+    print("  2. Install dependencies: py -3.10 -m pip install -r requirements.txt")
+    print("  3. Run script: py -3.10 tobii_osc.py")
+    print("=" * 72)
+    if sys.platform == "win32":
+        input("\nPress Enter to exit...")
+    sys.exit(1)
+
+try:
+    from pythonosc import udp_client
+except (ImportError, ModuleNotFoundError):
+    print("=" * 72)
+    print("ERROR: Failed to import 'pythonosc'.")
+    print("Please install required dependencies with:")
+    print("  pip install -r requirements.txt")
+    print("=" * 72)
+    if sys.platform == "win32":
+        input("\nPress Enter to exit...")
+    sys.exit(1)
 
 # OSC Configuration
 DEFAULT_IP = "127.0.0.1"
