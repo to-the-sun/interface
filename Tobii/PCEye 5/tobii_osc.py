@@ -34,17 +34,49 @@ except (ImportError, ModuleNotFoundError):
         input("\nPress Enter to exit...")
     sys.exit(1)
 
+try:
+    from pynput.mouse import Controller as MouseController
+    mouse_controller = MouseController()
+except Exception:
+    mouse_controller = None
+
 # OSC Configuration
 DEFAULT_IP = "127.0.0.1"
 DEFAULT_PORT = 6731
 
-def gaze_data_callback(gaze_data, client):
+def get_screen_size():
+    if sys.platform == "win32":
+        try:
+            import ctypes
+            user32 = ctypes.windll.user32
+            try:
+                user32.SetProcessDPIAware()
+            except Exception:
+                pass
+            w, h = user32.GetSystemMetrics(0), user32.GetSystemMetrics(1)
+            if w > 0 and h > 0:
+                return w, h
+        except Exception:
+            pass
+    try:
+        import tkinter
+        root = tkinter.Tk()
+        root.withdraw()
+        w = root.winfo_screenwidth()
+        h = root.winfo_screenheight()
+        root.destroy()
+        if w > 0 and h > 0:
+            return w, h
+    except Exception:
+        pass
+    return 1920, 1080
+
+def gaze_data_callback(gaze_data, client, move_mouse=True, screen_size=(1920, 1080)):
     """
     Callback function that is called every time new gaze data is received.
-    Streams the data via OSC.
+    Streams the data via OSC and optionally moves mouse cursor onscreen.
     """
     # Extract left and right gaze points on the display area (normalized 0.0 to 1.0)
-    # In tobii_research, gaze_data is an object with attributes
     left_eye = gaze_data.left_gaze_point_on_display_area
     right_eye = gaze_data.right_gaze_point_on_display_area
 
@@ -54,6 +86,9 @@ def gaze_data_callback(gaze_data, client):
     # Check for validity (NaN indicates the eye was not tracked)
     valid_l = not (math.isnan(lx) or math.isnan(ly))
     valid_r = not (math.isnan(rx) or math.isnan(ry))
+
+    avg_x = None
+    avg_y = None
 
     if valid_l and valid_r:
         # Calculate average gaze point
@@ -70,6 +105,10 @@ def gaze_data_callback(gaze_data, client):
         # Note: Y is usually inverted in screen space (0 top, 1 bottom)
         client.send_message("/OpenFace/gaze_left_right", float((avg_x - 0.5) * 60.0))
         client.send_message("/OpenFace/gaze_up_down", float((avg_y - 0.5) * -60.0))
+    elif valid_l:
+        avg_x, avg_y = lx, ly
+    elif valid_r:
+        avg_x, avg_y = rx, ry
 
     if valid_l:
         client.send_message("/Tobii/left/gaze_x", float(lx))
@@ -87,13 +126,33 @@ def gaze_data_callback(gaze_data, client):
     if not math.isnan(rp):
         client.send_message("/Tobii/right/pupil_diameter", float(rp))
 
+    # Move mouse cursor using gaze data
+    if move_mouse and mouse_controller is not None and avg_x is not None and avg_y is not None:
+        target_x = max(0.0, min(1.0, avg_x))
+        target_y = max(0.0, min(1.0, avg_y))
+        sw, sh = screen_size
+        px = int(target_x * sw)
+        py = int(target_y * sh)
+        try:
+            mouse_controller.position = (px, py)
+        except Exception:
+            pass
+
 def main():
-    parser = argparse.ArgumentParser(description='Stream Tobii PCEye 5 gaze data to OSC')
+    parser = argparse.ArgumentParser(description='Stream Tobii PCEye 5 gaze data to OSC and control mouse cursor')
     parser.add_argument('--ip', type=str, default=DEFAULT_IP, help='OSC Destination IP (default: 127.0.0.1)')
     parser.add_argument('--port', type=int, default=DEFAULT_PORT, help='OSC Destination Port (default: 6731)')
+    parser.add_argument('--no-mouse', action='store_true', help='Disable moving mouse cursor onscreen using gaze data')
     args = parser.parse_args()
 
     client = udp_client.SimpleUDPClient(args.ip, args.port)
+
+    move_mouse = not args.no_mouse
+    if move_mouse and mouse_controller is None:
+        print("Warning: pynput could not be initialized; mouse control disabled.")
+        move_mouse = False
+
+    screen_size = get_screen_size()
 
     print("Searching for Tobii eye trackers...")
     try:
@@ -117,12 +176,15 @@ def main():
     print(f"Address: {eyetracker.address}")
     print(f"------------------------")
     print(f"Streaming gaze data to {args.ip}:{args.port}...")
+    if move_mouse:
+        print(f"Mouse cursor movement: ENABLED (Screen resolution: {screen_size[0]}x{screen_size[1]})")
+    else:
+        print("Mouse cursor movement: DISABLED")
     print("Press Ctrl+C to stop.")
 
     # Subscribe to gaze data
-    # Note: as_dictionary is not supported in the standard tobii_research SDK
     eyetracker.subscribe_to(tr.EYETRACKER_GAZE_DATA,
-                            lambda x: gaze_data_callback(x, client))
+                            lambda x: gaze_data_callback(x, client, move_mouse=move_mouse, screen_size=screen_size))
 
     try:
         while True:
