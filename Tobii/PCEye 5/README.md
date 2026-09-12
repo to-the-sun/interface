@@ -2,6 +2,10 @@
 
 This tool streams real-time gaze data from a **Tobii Dynavox PCEye 5** (or **Tobii Pro** devices) to Open Sound Control (OSC) and moves the onscreen mouse cursor based on gaze position by default.
 
+It supports two gaze input providers:
+1. **Tobii Pro SDK (`tobii_research`)**: Native streaming via Tobii Pro SDK (Default).
+2. **Microsoft Windows Gaze Input API (`Windows.Devices.Input.Preview`)**: Experimental option using Microsoft's native Windows gaze-input API (`winsdk`) and Windows `SetCursorPos`.
+
 ---
 
 ## Brand New PCEye 5 Out-of-the-Box Setup Guide
@@ -58,8 +62,18 @@ run_tobii.bat
 ```
 `run_tobii.bat` automatically:
 - Checks for or downloads an isolated portable **Python 3.10 64-bit** environment (`py310_env`).
-- Installs all required dependencies (`tobii-research`, `python-osc`, `pynput`).
+- Installs all required dependencies (`tobii-research`, `python-osc`, `pynput`, `winsdk`).
 - Launches `tobii_osc.py` with default mouse cursor movement and OSC streaming.
+
+#### Running Microsoft Windows Gaze API Experiment
+To test receiving gaze points via Microsoft's `Windows.Devices.Input.Preview` namespace and moving the cursor with `SetCursorPos`:
+```cmd
+run_tobii.bat --win-gaze
+```
+Or manually:
+```bash
+py -3.10 tobii_osc.py --win-gaze
+```
 
 #### Manual Execution
 If running manually with Python 3.10:
@@ -67,8 +81,11 @@ If running manually with Python 3.10:
 # 1. Install required dependencies
 py -3.10 -m pip install -r requirements.txt
 
-# 2. Run script with default options (OSC streaming + Onscreen Mouse Control)
+# 2. Run script with default options (Tobii Pro SDK)
 py -3.10 tobii_osc.py
+
+# 3. Run script with Windows Gaze Input API experiment
+py -3.10 tobii_osc.py --gaze-api win-gaze
 ```
 
 ---
@@ -76,12 +93,11 @@ py -3.10 tobii_osc.py
 ## Features & Options
 
 ### Onscreen Mouse Cursor Control
-* **Enabled by Default**: The script converts normalized gaze coordinates into screen pixels and moves the Windows/system mouse cursor to where you are looking.
+* **Enabled by Default**: The script converts normalized gaze coordinates into screen pixels and moves the Windows/system mouse cursor (`SetCursorPos`) to where you are looking.
 * **Disable Mouse Control**: If you only want to stream OSC data without moving the mouse cursor, pass the `--no-mouse` flag:
   ```bash
   py -3.10 tobii_osc.py --no-mouse
   ```
-  *(Or edit `run_tobii.bat` to append `--no-mouse` to the command line call).*
 
 ### Command-Line Arguments
 | Option | Default | Description |
@@ -89,6 +105,9 @@ py -3.10 tobii_osc.py
 | `--ip` | `127.0.0.1` | OSC Destination IP address |
 | `--port` | `6731` | OSC Destination UDP port |
 | `--no-mouse` | `False` | Disable moving mouse cursor onscreen using gaze data |
+| `--win-gaze` | `False` | Shortcut flag to use Microsoft Windows Gaze Input API (`Windows.Devices.Input.Preview`) |
+| `--gaze-api` | `tobii` | Select gaze input provider (`tobii` or `win-gaze`) |
+| `--debug` | `False` | Enable verbose per-frame debug logging |
 
 ---
 
@@ -105,7 +124,7 @@ To maintain compatibility with OpenFace receivers, the script sends:
 * `/OpenFace/gaze_left_right`: Approximate gaze angle in degrees (-30 to 30)
 * `/OpenFace/gaze_up_down`: Approximate gaze angle in degrees (-30 to 30)
 
-### Per-Eye Data
+### Per-Eye Data (Tobii Pro SDK mode)
 * `/Tobii/left/gaze_x`, `/Tobii/left/gaze_y`: Normalized gaze coordinates for left eye.
 * `/Tobii/right/gaze_x`, `/Tobii/right/gaze_y`: Normalized gaze coordinates for right eye.
 * `/Tobii/left/pupil_diameter`: Pupil diameter in mm (if available).
@@ -119,11 +138,8 @@ To maintain compatibility with OpenFace receivers, the script sends:
   1. Ensure the PCEye 5 USB cable is plugged directly into your PC.
   2. Verify that **TD Control** or **Tobii Service** is running in the system tray.
   3. Ensure the eye tracker is calibrated in TD Control before launching the script.
+* **Windows Gaze Input API Access Warning**:
+  * If using `--win-gaze`, ensure Eye Tracker access is enabled in Windows Privacy & Security settings (**Settings -> Privacy & Security -> Eye tracker**).
 * **"Could not find a version that satisfies the requirement tobii-research"**:
   * The `tobii-research` SDK only provides pre-compiled Python wheels for **Python 3.10** (and 3.8) 64-bit. Python 3.11, 3.12, 3.13+ are NOT supported by Tobii's PyPI package.
   * **Solution**: Run `run_tobii.bat`. It will create an isolated portable Python 3.10 environment automatically.
-* **Consumer Tobii Eye Tracker 5 vs PCEye 5**:
-  * **PCEye 5 (Dynavox)**: Fully supported out of the box (includes Tobii Pro license).
-  * **Tobii Eye Tracker 5 (Consumer/Gaming)**: Not natively supported by the Tobii Pro SDK unless unlocked with a Pro Upgrade license.
-* **Mouse Cursor Alignment Issues**:
-  * Ensure Windows display scaling (DPI) matches your screen resolution, or recalibrate inside TD Control.

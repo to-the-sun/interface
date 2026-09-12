@@ -1,3 +1,4 @@
 tobii-research
 python-osc
 pynput
+winsdk; sys_platform == "win32"
