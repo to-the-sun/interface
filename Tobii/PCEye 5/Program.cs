@@ -62,10 +62,62 @@ namespace PCEyeWinGaze
             _udpClient.Connect(_oscIp, _oscPort);
 
             Console.WriteLine($"OSC Endpoint: {_oscIp}:{_oscPort}");
-            Console.WriteLine($"Mouse Cursor Control: {(_moveMouse ? "ENABLED" : "DISABLED")} ({_screenWidth}x{_screenHeight})");
-            Console.WriteLine("Obtaining GazeInputSourcePreview instance...");
+            Console.WriteLine($"Mouse Cursor Control: {(_moveMouse ? "ENABLED" : "DISABLED")} ({_screenWidth}x{_screenHeight})\n");
 
-            var gazeSource = GazeInputSourcePreview.GetForCurrentView();
+            // 1. Inspect registered Windows Gaze Devices using GazeDeviceWatcherPreview
+            Console.WriteLine("Scanning Windows Gaze Devices via GazeDeviceWatcherPreview...");
+            try
+            {
+                var watcher = GazeDeviceWatcherPreview.CreateWatcher();
+                watcher.Added += (w, dev) =>
+                {
+                    Console.WriteLine($" [Gaze Device Found] Id: {dev.Id} | Model: {dev.Model} | Firmware: {dev.FirmwareVersion}");
+                };
+                watcher.EnumerationCompleted += (w, obj) =>
+                {
+                    Console.WriteLine(" [Gaze Device Scan Completed]");
+                };
+                watcher.Start();
+                await Task.Delay(1000);
+                watcher.Stop();
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($" Gaze Device Watcher Error: {ex.Message}");
+            }
+
+            Console.WriteLine("\nObtaining GazeInputSourcePreview instance...");
+            GazeInputSourcePreview? gazeSource = null;
+
+            try
+            {
+                gazeSource = GazeInputSourcePreview.GetForCurrentView();
+            }
+            catch (COMException comEx) when (comEx.HResult == unchecked((int)0x80070490)) // 0x80070490: Element not found
+            {
+                Console.WriteLine("\n========================================================================");
+                Console.WriteLine(" ERROR: Windows GazeInputSourcePreview returned 'Element Not Found' (0x80070490).");
+                Console.WriteLine("========================================================================");
+                Console.WriteLine(" Why this occurs:");
+                Console.WriteLine(" 1. GetForCurrentView() requires a UWP/XAML UI Window or active Windows Eye Control.");
+                Console.WriteLine(" 2. Windows Eye Control is currently OFF or PCEye 5 driver is not registered with Windows.");
+                Console.WriteLine("\n Quick Fix Instructions:");
+                Console.WriteLine("  A. Open Windows Settings -> Ease of Access -> Eye control.");
+                Console.WriteLine("  B. Toggle 'Eye control' to ON.");
+                Console.WriteLine("  C. Ensure the red gaze cursor appears on screen, then run this app again.");
+                Console.WriteLine("========================================================================\n");
+                Console.WriteLine("Press Enter to exit...");
+                Console.ReadLine();
+                return;
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"\nFailed to obtain GazeInputSourcePreview: {ex.GetType().Name} - {ex.Message}");
+                Console.WriteLine("Ensure PCEye 5 is connected and Windows Eye Control is toggled ON in Settings.");
+                Console.ReadLine();
+                return;
+            }
+
             if (gazeSource == null)
             {
                 Console.WriteLine("\nERROR: GazeInputSourcePreview.GetForCurrentView() returned null.");
@@ -142,7 +194,6 @@ namespace PCEyeWinGaze
                 }
             }
 
-            // Candidate properties on GazePointPreview
             string[] candidateNames = new string[] { "EyeGazePositionInPixels", "Point", "Position", "GazePoint", "Location" };
             foreach (var name in candidateNames)
             {
@@ -157,7 +208,6 @@ namespace PCEyeWinGaze
                 }
             }
 
-            // Direct X, Y properties on pointObj itself
             if (TryGetSubXY(pointObj, out x, out y))
             {
                 return true;
@@ -172,7 +222,6 @@ namespace PCEyeWinGaze
             y = 0;
             if (obj == null) return false;
 
-            // Handle Nullable<Point> or Nullable<Vector2>
             Type t = obj.GetType();
             if (t.IsGenericType && t.GetGenericTypeDefinition() == typeof(Nullable<>))
             {

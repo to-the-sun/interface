@@ -120,7 +120,21 @@ def run_windows_gaze(client, move_mouse=True, screen_size=(1920, 1080), debug=Fa
             return None
 
     except Exception as e:
-        print(f"Failed to initialize Windows Gaze Input API: {e}")
+        err_msg = str(e)
+        if "0x80070490" in err_msg or "Element not found" in err_msg or "COMException" in type(e).__name__:
+            print("\n========================================================================")
+            print(" ERROR: Windows GazeInputSourcePreview returned 'Element Not Found' (0x80070490).")
+            print("========================================================================")
+            print(" Why this occurs:")
+            print(" 1. Windows Eye Control is currently toggled OFF.")
+            print(" 2. GetForCurrentView() requires an active Windows Eye Control session.")
+            print("\n Quick Fix Instructions:")
+            print("  A. Open Windows Settings -> Ease of Access -> Eye control.")
+            print("  B. Toggle 'Eye control' to ON.")
+            print("  C. Confirm the red gaze cursor appears on screen, then restart this app.")
+            print("========================================================================\n")
+        else:
+            print(f"Failed to initialize Windows Gaze Input API: {e}")
         return None
 
     def on_gaze_moved(sender, args):
