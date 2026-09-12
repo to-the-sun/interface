@@ -7,6 +7,18 @@
     <Nullable>enable</Nullable>
     <UseWindowsForms>true</UseWindowsForms>
     <TargetPlatformMinVersion>10.0.17763.0</TargetPlatformMinVersion>
+    <AppxPackage>true</AppxPackage>
   </PropertyGroup>
+
+  <ItemGroup>
+    <None Include="AppxManifest.xml" CopyToOutputDirectory="PreserveNewest" />
+    <None Include="Package.appxmanifest" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Content Include="Images\StoreLogo.png" CopyToOutputDirectory="PreserveNewest" />
+    <Content Include="Images\Square150x150Logo.png" CopyToOutputDirectory="PreserveNewest" />
+    <Content Include="Images\Square44x44Logo.png" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
 
 </Project>

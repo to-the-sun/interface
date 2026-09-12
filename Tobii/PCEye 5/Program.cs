@@ -161,26 +161,25 @@ namespace PCEyeWinGaze
                     Log(" ERROR: Windows GazeInputSourcePreview returned 'Element Not Found' (0x80070490).");
                     Log("========================================================================");
                     Log(" Why this occurs:");
-                    Log(" 1. Windows Eye Control is currently toggled OFF.");
-                    Log(" 2. GetForCurrentView() requires an active Windows Eye Control session.");
-                    Log("\n Quick Fix Instructions:");
-                    Log("  A. Open Windows Settings -> Ease of Access -> Eye control.");
-                    Log("  B. Toggle 'Eye control' to ON.");
-                    Log("  C. Confirm the red gaze cursor appears on screen, then restart this app.");
+                    Log(" 1. Application lacks package identity / gazeInput capability registration.");
+                    Log(" 2. Windows Eye Control / PCEye 5 driver does not expose raw gaze to GetForCurrentView().");
+                    Log("\n Troubleshooting Guidance:");
+                    Log("  A. Run register_gaze_capability.ps1 to register AppxManifest.xml with gazeInput capability.");
+                    Log("  B. If TD Control functions but Windows Gaze API throws 0x80070490, PCEye 5 software");
+                    Log("     operates exclusively via Tobii's proprietary service, not Microsoft's public Gaze API.");
                     Log("========================================================================\n");
                     return;
                 }
                 catch (Exception ex)
                 {
                     Log($"\nFailed to obtain GazeInputSourcePreview: {ex.GetType().Name} - {ex.Message}");
-                    Log("Ensure PCEye 5 is connected and Windows Eye Control is toggled ON in Settings.");
                     return;
                 }
 
                 if (gazeSource == null)
                 {
                     Log("\nERROR: GazeInputSourcePreview.GetForCurrentView() returned null.");
-                    Log("Ensure PCEye 5 is connected, calibrated in TD Control, and Windows Eye Control is toggled ON in Settings.");
+                    Log("Ensure PCEye 5 is connected and calibrated in TD Control.");
                     return;
                 }
 

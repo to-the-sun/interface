@@ -2,7 +2,7 @@
 
 This project streams real-time gaze data from a **Tobii Dynavox PCEye 5** (or compatible Windows gaze input devices) to Open Sound Control (OSC) and moves the onscreen mouse cursor continuously using Microsoft's native **Windows Gaze Input API** (`Windows.Devices.Input.Preview`) and Windows `SetCursorPos`.
 
-Both **C# (.NET 8)** and **Python (`winsdk`)** implementations are provided in this folder.
+Both **C# (.NET 8 WinForms)** and **Python (`winsdk`)** implementations are provided in this folder.
 
 ---
 
@@ -42,15 +42,13 @@ You **cannot manually register** an eye tracker as a Windows gaze device. The ma
 
 ---
 
-## Why the Windows Mouse Pointer Doesn't Follow by Default
+## Understanding `0x80070490` (Element Not Found) & `gazeInput` Capability
 
-Windows Eye Control uses a **dwell-based launchpad** (Precise Mouse) so the mouse arrow doesn't jump whenever you look around.
+The WinRT API `Windows.Devices.Input.Preview.GazeInputSourcePreview` requires two conditions:
+1. **Active UI View Context**: A UI thread window (handled automatically by our WinForms UI application).
+2. **Package Identity with `gazeInput` Capability**: Microsoft restricts gaze API access to applications that declare the `<DeviceCapability Name="gazeInput" />` in an app manifest (`Package.appxmanifest`).
 
-Our custom project subscribes directly to `Windows.Devices.Input.Preview.GazeInputSourcePreview` and calls `SetCursorPos(px, py)` on every gaze event, giving you **continuous real-time mouse tracking**:
-
-```text
-PCEye 5 -> Windows Gaze API -> GazeMoved event -> SetCursorPos(x, y)
-```
+`run_tobii.bat` automatically registers the package manifest via `register_gaze_capability.ps1` on launch.
 
 ---
 
@@ -62,11 +60,13 @@ Simply double-click or run:
 run_tobii.bat
 ```
 `run_tobii.bat` will:
-1. Automatically build and run the high-performance **C# application** (`Program.cs`) if `.NET SDK` is installed.
-2. Automatically fallback to the **Python environment** (`tobii_osc.py` using `winsdk`) if `.NET SDK` is not installed.
+1. Automatically register the app manifest (`Package.appxmanifest`) declaring `<DeviceCapability Name="gazeInput" />`.
+2. Automatically build and run the high-performance **C# application** (`Program.cs`) if `.NET SDK` is installed.
+3. Automatically fallback to the **Python environment** (`tobii_osc.py` using `winsdk`) if `.NET SDK` is not installed.
 
 ### Manual C# (.NET 8) Execution
 ```cmd
+powershell -ExecutionPolicy Bypass -File register_gaze_capability.ps1
 dotnet run -c Release
 ```
 

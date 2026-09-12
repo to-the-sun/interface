@@ -7,6 +7,9 @@ echo  Tobii PCEye 5 - Windows Gaze Input API Launcher
 echo ========================================================================
 echo.
 
+:: Register sparse package manifest with gazeInput capability if powershell is available
+powershell -NoProfile -ExecutionPolicy Bypass -File "%~dp0register_gaze_capability.ps1" >nul 2>&1
+
 :: Check if dotnet CLI is installed for C# execution
 where dotnet >nul 2>&1
 if %ERRORLEVEL% equ 0 (
