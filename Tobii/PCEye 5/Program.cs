@@ -61,28 +61,13 @@ namespace PCEyeWinGaze
 
             Console.WriteLine($"OSC Endpoint: {_oscIp}:{_oscPort}");
             Console.WriteLine($"Mouse Cursor Control: {(_moveMouse ? "ENABLED" : "DISABLED")} ({_screenWidth}x{_screenHeight})");
-            Console.WriteLine("Requesting Windows Gaze Input Access...");
-
-            try
-            {
-                var accessStatus = await GazeInputSourcePreview.RequestAccessAsync();
-                Console.WriteLine($"Windows Gaze Input Access Status: {accessStatus}");
-                if (accessStatus != GazeInputAccessStatus.Allowed)
-                {
-                    Console.WriteLine("WARNING: Windows Eye Tracker access is not allowed under Windows Privacy Settings.");
-                    Console.WriteLine("Go to: Windows Settings -> Privacy & Security -> Eye tracker -> Enable access.");
-                }
-            }
-            catch (Exception ex)
-            {
-                Console.WriteLine($"Access Request Exception: {ex.Message}");
-            }
+            Console.WriteLine("Obtaining GazeInputSourcePreview instance...");
 
             var gazeSource = GazeInputSourcePreview.GetForCurrentView();
             if (gazeSource == null)
             {
                 Console.WriteLine("\nERROR: GazeInputSourcePreview.GetForCurrentView() returned null.");
-                Console.WriteLine("Ensure PCEye 5 is connected, calibrated in TD Control, and Windows Eye Control is toggled ON.");
+                Console.WriteLine("Ensure PCEye 5 is connected, calibrated in TD Control, and Windows Eye Control is toggled ON in Settings.");
                 Console.WriteLine("Press Enter to exit...");
                 Console.ReadLine();
                 return;
@@ -117,11 +102,11 @@ namespace PCEyeWinGaze
             var currentPoint = args.CurrentPoint;
             if (currentPoint == null) return;
 
-            var eyePos = currentPoint.EyeGazePositionInPixels;
-            if (eyePos == null) return;
+            // In Windows.Devices.Input.Preview.GazePointPreview, the gaze coordinate is stored in Point
+            var point = currentPoint.Point;
 
-            double px = eyePos.Value.X;
-            double py = eyePos.Value.Y;
+            double px = point.X;
+            double py = point.Y;
 
             double avgX = Math.Max(0.0, Math.Min(1.0, px / _screenWidth));
             double avgY = Math.Max(0.0, Math.Min(1.0, py / _screenHeight));

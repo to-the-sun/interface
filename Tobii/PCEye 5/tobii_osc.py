@@ -113,24 +113,10 @@ def run_windows_gaze(client, move_mouse=True, screen_size=(1920, 1080), debug=Fa
 
     print("Initializing Microsoft Windows Gaze Input API (Windows.Devices.Input.Preview)...")
     try:
-        import asyncio
-        async def check_access():
-            return await win_gaze_preview.GazeInputSourcePreview.request_access_async()
-
-        try:
-            access_status = asyncio.run(check_access())
-        except Exception:
-            access_status = win_gaze_preview.GazeInputSourcePreview.request_access_async().get_results()
-
-        print(f"Windows Gaze Access Status: {access_status}")
-        if access_status != win_gaze_preview.GazeInputAccessStatus.ALLOWED:
-            print(f"WARNING: Windows Gaze Input access status is '{access_status}'.")
-            print("Ensure Eye Tracking capability is permitted under Windows Privacy Settings (Settings -> Privacy & Security -> Eye tracker).")
-
         gaze_source = win_gaze_preview.GazeInputSourcePreview.get_for_current_view()
         if gaze_source is None:
             print("ERROR: GazeInputSourcePreview.get_for_current_view() returned None.")
-            print("Ensure PCEye 5 / Gaze device is recognized by Windows as an input device.")
+            print("Ensure PCEye 5 / Gaze device is recognized by Windows and Eye Control is enabled in Settings.")
             return None
 
     except Exception as e:
@@ -145,14 +131,17 @@ def run_windows_gaze(client, move_mouse=True, screen_size=(1920, 1080), debug=Fa
             if cp is None:
                 return
 
-            eye_pos = getattr(cp, 'eye_gaze_position_in_pixels', None)
+            eye_pos = getattr(cp, 'point', None)
+            if eye_pos is None:
+                eye_pos = getattr(cp, 'eye_gaze_position_in_pixels', None)
+
             if eye_pos is None:
                 if debug and (stats['total_frames'] % 30 == 0):
                     print(f"[DEBUG Frame {stats['total_frames']}] Gaze moved but eye position is None.")
                 return
 
-            px = float(eye_pos.x)
-            py = float(eye_pos.y)
+            px = float(getattr(eye_pos, 'x', getattr(eye_pos, 'X', 0)))
+            py = float(getattr(eye_pos, 'y', getattr(eye_pos, 'Y', 0)))
 
             sw, sh = screen_size
             avg_x = max(0.0, min(1.0, px / sw)) if sw > 0 else 0.5
