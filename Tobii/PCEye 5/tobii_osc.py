@@ -1,7 +1,37 @@
 import sys
+import os
 import time
 import math
 import argparse
+
+def _setup_sdk_paths():
+    """
+    Search for local '64' directory containing 64-bit Tobii Pro SDK modules/DLLs
+    and register them with sys.path and Windows DLL directory search path.
+    """
+    script_dir = os.path.dirname(os.path.abspath(__file__))
+    cwd = os.getcwd()
+    candidate_dirs = [
+        os.path.join(script_dir, "64"),
+        os.path.join(script_dir, "..", "64"),
+        os.path.join(script_dir, "..", "..", "64"),
+        os.path.join(cwd, "64"),
+        os.path.join(cwd, "Tobii", "64"),
+        os.path.join(cwd, "Tobii", "PCEye 5", "64"),
+        os.path.join(cwd, "Tobii", "4C", "64"),
+    ]
+    for d in candidate_dirs:
+        norm_d = os.path.abspath(d)
+        if os.path.isdir(norm_d):
+            if norm_d not in sys.path:
+                sys.path.insert(0, norm_d)
+            if sys.platform == "win32" and hasattr(os, "add_dll_directory"):
+                try:
+                    os.add_dll_directory(norm_d)
+                except Exception:
+                    pass
+
+_setup_sdk_paths()
 
 try:
     import tobii_research as tr

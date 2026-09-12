@@ -122,6 +122,7 @@ To maintain compatibility with OpenFace receivers, the script sends:
 * **"Could not find a version that satisfies the requirement tobii-research"**:
   * The `tobii-research` SDK only provides pre-compiled Python wheels for **Python 3.10** (and 3.8) 64-bit. Python 3.11, 3.12, 3.13+ are NOT supported by Tobii's PyPI package.
   * **Solution**: Run `run_tobii.bat`. It will create an isolated portable Python 3.10 environment automatically.
+  * **Alternative (`64/` Directory)**: If you have the 64-bit Tobii Pro SDK directory (`64/` containing `tobii_research` package / `.pyd` dynamic libraries and DLLs), place the `64` folder inside `Tobii/`, `Tobii/PCEye 5/`, or the repository root. `tobii_osc.py` will automatically locate `64/`, add it to `sys.path`, and register DLL search paths with `os.add_dll_directory` on Windows. Note: Python must be running as 64-bit and match the SDK's C ABI version.
 * **Consumer Tobii Eye Tracker 5 vs PCEye 5**:
   * **PCEye 5 (Dynavox)**: Fully supported out of the box (includes Tobii Pro license).
   * **Tobii Eye Tracker 5 (Consumer/Gaming)**: Not natively supported by the Tobii Pro SDK unless unlocked with a Pro Upgrade license.

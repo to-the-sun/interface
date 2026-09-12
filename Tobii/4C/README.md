@@ -39,9 +39,17 @@ The script streams to the following addresses (standardized to snake_case):
 - `/right/gaze_x`, `/right/gaze_y`: Right eye gaze.
 - `/left/pupil_diameter`, `/right/pupil_diameter`: Pupil diameter in mm.
 
+## Using the 64-bit Tobii Pro SDK (`64/` Directory)
+
+If you have the 64-bit Tobii Pro SDK binaries directory (`64/` containing `tobii_research` package / `.pyd` dynamic libraries and native DLLs), place the `64` folder inside `Tobii/`, `Tobii/4C/`, or the repository root. `tobii_4c_osc.py` automatically detects candidate `64/` directories, inserts them into `sys.path`, and registers Windows DLL search paths via `os.add_dll_directory`.
+
+**Requirements for using `64/`**:
+1. **64-bit Python**: Python must be running as a 64-bit process (`sys.maxsize > 2**32`).
+2. **Matching Python C ABI**: The pre-compiled `.pyd` extension modules must match your installed Python runtime version (e.g., Python 3.10).
+
 ## Troubleshooting
 
-- **"Could not find a version that satisfies the requirement tobii-research"**: This usually means your Python version is not supported by the available wheels on PyPI. Ensure you are using **Python 3.10**.
+- **"Could not find a version that satisfies the requirement tobii-research"**: This usually means your Python version is not supported by the available wheels on PyPI. Ensure you are using **Python 3.10** or providing the `64/` SDK folder.
 - **"No Tobii eye trackers found"**:
     - Ensure the Tobii Core/Eye Tracking software is running.
     - Ensure the device is calibrated and active.
