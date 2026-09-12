@@ -1,6 +1,7 @@
 using System;
 using System.Net;
 using System.Net.Sockets;
+using System.Reflection;
 using System.Runtime.InteropServices;
 using System.Text;
 using System.Threading.Tasks;
@@ -28,6 +29,7 @@ namespace PCEyeWinGaze
 
         private static long _frameCount = 0;
         private static long _mouseMoveCount = 0;
+        private static bool _loggedProperties = false;
 
         static async Task Main(string[] args)
         {
@@ -102,27 +104,106 @@ namespace PCEyeWinGaze
             var currentPoint = args.CurrentPoint;
             if (currentPoint == null) return;
 
-            // In Windows.Devices.Input.Preview.GazePointPreview, the gaze coordinate is stored in Point
-            var point = currentPoint.Point;
-
-            double px = point.X;
-            double py = point.Y;
-
-            double avgX = Math.Max(0.0, Math.Min(1.0, px / _screenWidth));
-            double avgY = Math.Max(0.0, Math.Min(1.0, py / _screenHeight));
-
-            SendOscMessage("/Tobii/gaze_x", (float)avgX);
-            SendOscMessage("/Tobii/gaze_y", (float)avgY);
-            SendOscMessage("/OpenFace/gaze_left_right", (float)((avgX - 0.5) * 60.0));
-            SendOscMessage("/OpenFace/gaze_up_down", (float)((avgY - 0.5) * -60.0));
-
-            if (_moveMouse)
+            if (TryExtractXY(currentPoint, out double px, out double py))
             {
-                if (SetCursorPos((int)px, (int)py))
+                double avgX = Math.Max(0.0, Math.Min(1.0, px / _screenWidth));
+                double avgY = Math.Max(0.0, Math.Min(1.0, py / _screenHeight));
+
+                SendOscMessage("/Tobii/gaze_x", (float)avgX);
+                SendOscMessage("/Tobii/gaze_y", (float)avgY);
+                SendOscMessage("/OpenFace/gaze_left_right", (float)((avgX - 0.5) * 60.0));
+                SendOscMessage("/OpenFace/gaze_up_down", (float)((avgY - 0.5) * -60.0));
+
+                if (_moveMouse)
                 {
-                    _mouseMoveCount++;
+                    if (SetCursorPos((int)px, (int)py))
+                    {
+                        _mouseMoveCount++;
+                    }
                 }
             }
+        }
+
+        private static bool TryExtractXY(object pointObj, out double x, out double y)
+        {
+            x = 0;
+            y = 0;
+            if (pointObj == null) return false;
+
+            Type type = pointObj.GetType();
+
+            if (!_loggedProperties)
+            {
+                _loggedProperties = true;
+                Console.WriteLine($"[GazePointPreview Type] {type.FullName}");
+                foreach (var prop in type.GetProperties())
+                {
+                    Console.WriteLine($"  -> Property: {prop.Name} ({prop.PropertyType.Name})");
+                }
+            }
+
+            // Candidate properties on GazePointPreview
+            string[] candidateNames = new string[] { "EyeGazePositionInPixels", "Point", "Position", "GazePoint", "Location" };
+            foreach (var name in candidateNames)
+            {
+                var prop = type.GetProperty(name, BindingFlags.Public | BindingFlags.Instance | BindingFlags.IgnoreCase);
+                if (prop != null)
+                {
+                    object? val = prop.GetValue(pointObj);
+                    if (val != null && TryGetSubXY(val, out x, out y))
+                    {
+                        return true;
+                    }
+                }
+            }
+
+            // Direct X, Y properties on pointObj itself
+            if (TryGetSubXY(pointObj, out x, out y))
+            {
+                return true;
+            }
+
+            return false;
+        }
+
+        private static bool TryGetSubXY(object obj, out double x, out double y)
+        {
+            x = 0;
+            y = 0;
+            if (obj == null) return false;
+
+            // Handle Nullable<Point> or Nullable<Vector2>
+            Type t = obj.GetType();
+            if (t.IsGenericType && t.GetGenericTypeDefinition() == typeof(Nullable<>))
+            {
+                var hasValueProp = t.GetProperty("HasValue");
+                if (hasValueProp != null && (bool)hasValueProp.GetValue(obj)! == false)
+                    return false;
+                var valueProp = t.GetProperty("Value");
+                if (valueProp != null)
+                {
+                    obj = valueProp.GetValue(obj)!;
+                    if (obj == null) return false;
+                    t = obj.GetType();
+                }
+            }
+
+            var xProp = t.GetProperty("X", BindingFlags.Public | BindingFlags.Instance | BindingFlags.IgnoreCase);
+            var yProp = t.GetProperty("Y", BindingFlags.Public | BindingFlags.Instance | BindingFlags.IgnoreCase);
+
+            if (xProp != null && yProp != null)
+            {
+                object? xVal = xProp.GetValue(obj);
+                object? yVal = yProp.GetValue(obj);
+                if (xVal != null && yVal != null)
+                {
+                    x = Convert.ToDouble(xVal);
+                    y = Convert.ToDouble(yVal);
+                    return true;
+                }
+            }
+
+            return false;
         }
 
         private static void SendOscMessage(string address, float value)
