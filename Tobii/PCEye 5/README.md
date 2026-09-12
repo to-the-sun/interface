@@ -2,6 +2,8 @@
 
 This tool streams real-time gaze data from a **Tobii Dynavox PCEye 5** (or compatible Windows gaze input devices) to Open Sound Control (OSC) and moves the onscreen mouse cursor based on gaze position using Microsoft's native **Windows Gaze Input API** (`Windows.Devices.Input.Preview`) and Windows `SetCursorPos`.
 
+*Note: Since this tool uses Microsoft's native Windows Gaze Input API (`winsdk`) instead of the legacy Tobii Pro SDK, **it supports any modern 64-bit Python version (including Python 3.12, 3.11, 3.10, 3.9, 3.8)**.*
+
 ---
 
 ## Brand New PCEye 5 Setup Guide (Windows Gaze API)
@@ -34,7 +36,10 @@ Simply double-click or run the batch script on Windows:
 ```cmd
 run_tobii.bat
 ```
-`run_tobii.bat` automatically checks/sets up the Python environment, installs dependencies (`python-osc`, `pynput`, `winsdk`), and launches `tobii_osc.py`.
+`run_tobii.bat` automatically:
+- Locates or creates a local Python virtual environment (`env`) using your system Python (e.g. Python 3.12, 3.10, etc.).
+- Automatically installs and verifies required dependencies (`winsdk`, `python-osc`, `pynput`) via `requirements.txt` on every run.
+- Launches `tobii_osc.py`.
 
 #### Manual Execution
 ```bash
