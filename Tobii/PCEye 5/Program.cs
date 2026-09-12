@@ -65,9 +65,9 @@ namespace PCEyeWinGaze
             // Create a WinForms UI Window to establish an active WinRT UI View Context for GetForCurrentView()
             var form = new Form
             {
-                Text = "Tobii PCEye 5 - Windows Gaze Input API",
-                Width = 550,
-                Height = 350,
+                Text = "Tobii PCEye 5 - Continuous Windows Gaze Streamer",
+                Width = 580,
+                Height = 380,
                 StartPosition = FormStartPosition.CenterScreen
             };
 
@@ -95,8 +95,8 @@ namespace PCEyeWinGaze
             };
 
             Log("========================================================================");
-            Log(" Tobii PCEye 5 - C# Windows Gaze Input API Streamer & Mouse Control");
-            Log(" Uses Windows.Devices.Input.Preview & SetCursorPos");
+            Log(" Tobii PCEye 5 - Continuous Gaze Streamer & Mouse Control");
+            Log(" Uses Windows.Devices.Input.Preview & Continuous SetCursorPos");
             Log("========================================================================\n");
             Log($"OSC Endpoint: {_oscIp}:{_oscPort}");
             Log($"Mouse Cursor Control: {(_moveMouse ? "ENABLED" : "DISABLED")} ({_screenWidth}x{_screenHeight})\n");
