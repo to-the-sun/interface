@@ -114,7 +114,20 @@ namespace PCEyeWinGaze
                             var device = devArgs.Device;
                             if (device != null)
                             {
-                                Log($" [Gaze Device Found] Id: {device.Id} | Model: {device.Model} | Firmware: {device.FirmwareVersion}");
+                                string devInfo = $"Id: {device.Id}";
+                                try
+                                {
+                                    var props = device.GetType().GetProperties();
+                                    foreach (var p in props)
+                                    {
+                                        if (p.Name != "Id")
+                                        {
+                                            devInfo += $" | {p.Name}: {p.GetValue(device)}";
+                                        }
+                                    }
+                                }
+                                catch { }
+                                Log($" [Gaze Device Found] {devInfo}");
                             }
                             else
                             {
