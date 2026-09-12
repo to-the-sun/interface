@@ -109,9 +109,17 @@ namespace PCEyeWinGaze
                     var watcher = GazeInputSourcePreview.CreateWatcher();
                     if (watcher != null)
                     {
-                        watcher.Added += (w, dev) =>
+                        watcher.Added += (w, devArgs) =>
                         {
-                            Log($" [Gaze Device Found] Id: {dev.Id} | Model: {dev.Model} | Firmware: {dev.FirmwareVersion}");
+                            var device = devArgs.Device;
+                            if (device != null)
+                            {
+                                Log($" [Gaze Device Found] Id: {device.Id} | Model: {device.Model} | Firmware: {device.FirmwareVersion}");
+                            }
+                            else
+                            {
+                                Log($" [Gaze Device Event] {devArgs}");
+                            }
                         };
                         watcher.EnumerationCompleted += (w, obj) =>
                         {
