@@ -1,10 +1,12 @@
 using System;
+using System.Drawing;
 using System.Net;
 using System.Net.Sockets;
 using System.Reflection;
 using System.Runtime.InteropServices;
 using System.Text;
 using System.Threading.Tasks;
+using System.Windows.Forms;
 using Windows.Devices.Input.Preview;
 
 namespace PCEyeWinGaze
@@ -31,12 +33,11 @@ namespace PCEyeWinGaze
         private static long _mouseMoveCount = 0;
         private static bool _loggedProperties = false;
 
-        static async Task Main(string[] args)
+        [STAThread]
+        static void Main(string[] args)
         {
-            Console.WriteLine("========================================================================");
-            Console.WriteLine(" Tobii PCEye 5 - C# Windows Gaze Input API Streamer & Mouse Control");
-            Console.WriteLine(" Uses Windows.Devices.Input.Preview & SetCursorPos");
-            Console.WriteLine("========================================================================\n");
+            Application.EnableVisualStyles();
+            Application.SetCompatibleTextRenderingDefault(false);
 
             for (int i = 0; i < args.Length; i++)
             {
@@ -61,102 +62,134 @@ namespace PCEyeWinGaze
             _udpClient = new UdpClient();
             _udpClient.Connect(_oscIp, _oscPort);
 
-            Console.WriteLine($"OSC Endpoint: {_oscIp}:{_oscPort}");
-            Console.WriteLine($"Mouse Cursor Control: {(_moveMouse ? "ENABLED" : "DISABLED")} ({_screenWidth}x{_screenHeight})\n");
-
-            // 1. Inspect registered Windows Gaze Devices using GazeDeviceWatcherPreview
-            Console.WriteLine("Scanning Windows Gaze Devices via GazeDeviceWatcherPreview...");
-            try
+            // Create a WinForms UI Window to establish an active WinRT UI View Context for GetForCurrentView()
+            var form = new Form
             {
-                var watcher = GazeDeviceWatcherPreview.CreateWatcher();
-                watcher.Added += (w, dev) =>
-                {
-                    Console.WriteLine($" [Gaze Device Found] Id: {dev.Id} | Model: {dev.Model} | Firmware: {dev.FirmwareVersion}");
-                };
-                watcher.EnumerationCompleted += (w, obj) =>
-                {
-                    Console.WriteLine(" [Gaze Device Scan Completed]");
-                };
-                watcher.Start();
-                await Task.Delay(1000);
-                watcher.Stop();
-            }
-            catch (Exception ex)
-            {
-                Console.WriteLine($" Gaze Device Watcher Error: {ex.Message}");
-            }
-
-            Console.WriteLine("\nObtaining GazeInputSourcePreview instance...");
-            GazeInputSourcePreview? gazeSource = null;
-
-            try
-            {
-                gazeSource = GazeInputSourcePreview.GetForCurrentView();
-            }
-            catch (COMException comEx) when (comEx.HResult == unchecked((int)0x80070490)) // 0x80070490: Element not found
-            {
-                Console.WriteLine("\n========================================================================");
-                Console.WriteLine(" ERROR: Windows GazeInputSourcePreview returned 'Element Not Found' (0x80070490).");
-                Console.WriteLine("========================================================================");
-                Console.WriteLine(" Why this occurs:");
-                Console.WriteLine(" 1. GetForCurrentView() requires a UWP/XAML UI Window or active Windows Eye Control.");
-                Console.WriteLine(" 2. Windows Eye Control is currently OFF or PCEye 5 driver is not registered with Windows.");
-                Console.WriteLine("\n Quick Fix Instructions:");
-                Console.WriteLine("  A. Open Windows Settings -> Ease of Access -> Eye control.");
-                Console.WriteLine("  B. Toggle 'Eye control' to ON.");
-                Console.WriteLine("  C. Ensure the red gaze cursor appears on screen, then run this app again.");
-                Console.WriteLine("========================================================================\n");
-                Console.WriteLine("Press Enter to exit...");
-                Console.ReadLine();
-                return;
-            }
-            catch (Exception ex)
-            {
-                Console.WriteLine($"\nFailed to obtain GazeInputSourcePreview: {ex.GetType().Name} - {ex.Message}");
-                Console.WriteLine("Ensure PCEye 5 is connected and Windows Eye Control is toggled ON in Settings.");
-                Console.ReadLine();
-                return;
-            }
-
-            if (gazeSource == null)
-            {
-                Console.WriteLine("\nERROR: GazeInputSourcePreview.GetForCurrentView() returned null.");
-                Console.WriteLine("Ensure PCEye 5 is connected, calibrated in TD Control, and Windows Eye Control is toggled ON in Settings.");
-                Console.WriteLine("Press Enter to exit...");
-                Console.ReadLine();
-                return;
-            }
-
-            gazeSource.GazeMoved += OnGazeMoved;
-            Console.WriteLine("\nSubscribed to Windows GazeInputSourcePreview GazeMoved events.");
-            Console.WriteLine("Monitoring incoming gaze points... Press Ctrl+C to exit.\n");
-
-            var timer = new System.Threading.Timer((_) =>
-            {
-                Console.WriteLine($"[STATUS] Frames: {_frameCount} | Mouse Moves: {_mouseMoveCount}");
-            }, null, 2000, 2000);
-
-            var tcs = new TaskCompletionSource<bool>();
-            Console.CancelKeyPress += (s, e) =>
-            {
-                e.Cancel = true;
-                tcs.SetResult(true);
+                Text = "Tobii PCEye 5 - Windows Gaze Input API",
+                Width = 550,
+                Height = 350,
+                StartPosition = FormStartPosition.CenterScreen
             };
-            await tcs.Task;
 
-            gazeSource.GazeMoved -= OnGazeMoved;
+            var textBox = new TextBox
+            {
+                Multiline = true,
+                ReadOnly = true,
+                Dock = DockStyle.Fill,
+                ScrollBars = ScrollBars.Vertical,
+                Font = new Font("Consolas", 9.5f),
+                BackColor = Color.Black,
+                ForeColor = Color.LightGreen
+            };
+            form.Controls.Add(textBox);
+
+            void Log(string msg)
+            {
+                if (form.IsHandleCreated)
+                {
+                    form.BeginInvoke((Action)(() =>
+                    {
+                        textBox.AppendText($"[{DateTime.Now:HH:mm:ss}] {msg}{Environment.NewLine}");
+                    }));
+                }
+            };
+
+            Log("========================================================================");
+            Log(" Tobii PCEye 5 - C# Windows Gaze Input API Streamer & Mouse Control");
+            Log(" Uses Windows.Devices.Input.Preview & SetCursorPos");
+            Log("========================================================================\n");
+            Log($"OSC Endpoint: {_oscIp}:{_oscPort}");
+            Log($"Mouse Cursor Control: {(_moveMouse ? "ENABLED" : "DISABLED")} ({_screenWidth}x{_screenHeight})\n");
+
+            form.Shown += async (s, e) =>
+            {
+                Log("Scanning Windows Gaze Devices via GazeInputSourcePreview.CreateWatcher()...");
+                try
+                {
+                    var watcher = GazeInputSourcePreview.CreateWatcher();
+                    if (watcher != null)
+                    {
+                        watcher.Added += (w, dev) =>
+                        {
+                            Log($" [Gaze Device Found] Id: {dev.Id} | Model: {dev.Model} | Firmware: {dev.FirmwareVersion}");
+                        };
+                        watcher.EnumerationCompleted += (w, obj) =>
+                        {
+                            Log(" [Gaze Device Scan Completed]");
+                        };
+                        watcher.Start();
+                        await Task.Delay(1000);
+                        watcher.Stop();
+                    }
+                }
+                catch (Exception ex)
+                {
+                    Log($" Gaze Device Watcher Notice: {ex.Message}");
+                }
+
+                Log("\nObtaining GazeInputSourcePreview instance in UI View Context...");
+                GazeInputSourcePreview? gazeSource = null;
+
+                try
+                {
+                    gazeSource = GazeInputSourcePreview.GetForCurrentView();
+                }
+                catch (COMException comEx) when (comEx.HResult == unchecked((int)0x80070490)) // 0x80070490: Element not found
+                {
+                    Log("\n========================================================================");
+                    Log(" ERROR: Windows GazeInputSourcePreview returned 'Element Not Found' (0x80070490).");
+                    Log("========================================================================");
+                    Log(" Why this occurs:");
+                    Log(" 1. Windows Eye Control is currently toggled OFF.");
+                    Log(" 2. GetForCurrentView() requires an active Windows Eye Control session.");
+                    Log("\n Quick Fix Instructions:");
+                    Log("  A. Open Windows Settings -> Ease of Access -> Eye control.");
+                    Log("  B. Toggle 'Eye control' to ON.");
+                    Log("  C. Confirm the red gaze cursor appears on screen, then restart this app.");
+                    Log("========================================================================\n");
+                    return;
+                }
+                catch (Exception ex)
+                {
+                    Log($"\nFailed to obtain GazeInputSourcePreview: {ex.GetType().Name} - {ex.Message}");
+                    Log("Ensure PCEye 5 is connected and Windows Eye Control is toggled ON in Settings.");
+                    return;
+                }
+
+                if (gazeSource == null)
+                {
+                    Log("\nERROR: GazeInputSourcePreview.GetForCurrentView() returned null.");
+                    Log("Ensure PCEye 5 is connected, calibrated in TD Control, and Windows Eye Control is toggled ON in Settings.");
+                    return;
+                }
+
+                gazeSource.GazeMoved += (sender, args) =>
+                {
+                    OnGazeMoved(sender, args, Log);
+                };
+
+                Log("\nSubscribed to Windows GazeInputSourcePreview GazeMoved events.");
+                Log("Monitoring incoming gaze points...\n");
+
+                var statusTimer = new System.Windows.Forms.Timer { Interval = 2000 };
+                statusTimer.Tick += (st, se) =>
+                {
+                    Log($"[STATUS] Frames: {_frameCount} | Mouse Moves: {_mouseMoveCount}");
+                };
+                statusTimer.Start();
+            };
+
+            Application.Run(form);
             _udpClient?.Close();
-            timer.Dispose();
-            Console.WriteLine("Unsubscribed and stopped successfully.");
         }
 
-        private static void OnGazeMoved(GazeInputSourcePreview sender, GazeMovedPreviewEventArgs args)
+        private static void OnGazeMoved(GazeInputSourcePreview sender, GazeMovedPreviewEventArgs args, Action<string> log)
         {
             _frameCount++;
             var currentPoint = args.CurrentPoint;
             if (currentPoint == null) return;
 
-            if (TryExtractXY(currentPoint, out double px, out double py))
+            if (TryExtractXY(currentPoint, out double px, out double py, log))
             {
                 double avgX = Math.Max(0.0, Math.Min(1.0, px / _screenWidth));
                 double avgY = Math.Max(0.0, Math.Min(1.0, py / _screenHeight));
@@ -176,7 +209,7 @@ namespace PCEyeWinGaze
             }
         }
 
-        private static bool TryExtractXY(object pointObj, out double x, out double y)
+        private static bool TryExtractXY(object pointObj, out double x, out double y, Action<string> log)
         {
             x = 0;
             y = 0;
@@ -187,10 +220,10 @@ namespace PCEyeWinGaze
             if (!_loggedProperties)
             {
                 _loggedProperties = true;
-                Console.WriteLine($"[GazePointPreview Type] {type.FullName}");
+                log($"[GazePointPreview Type] {type.FullName}");
                 foreach (var prop in type.GetProperties())
                 {
-                    Console.WriteLine($"  -> Property: {prop.Name} ({prop.PropertyType.Name})");
+                    log($"  -> Property: {prop.Name} ({prop.PropertyType.Name})");
                 }
             }
 
