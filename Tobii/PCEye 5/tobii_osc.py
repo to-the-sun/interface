@@ -241,9 +241,12 @@ def main():
         print("Mouse cursor movement: DISABLED")
     print("Press Ctrl+C to stop.")
 
+    # Define and hold a explicit reference to the callback function
+    # Storing the callback object in a variable prevents Python's garbage collector from destroying it
+    gaze_callback_ref = lambda x: gaze_data_callback(x, client, move_mouse=move_mouse, screen_size=screen_size, debug=args.debug)
+
     # Subscribe to gaze data
-    eyetracker.subscribe_to(tr.EYETRACKER_GAZE_DATA,
-                            lambda x: gaze_data_callback(x, client, move_mouse=move_mouse, screen_size=screen_size, debug=args.debug))
+    eyetracker.subscribe_to(tr.EYETRACKER_GAZE_DATA, gaze_callback_ref)
 
     print("\n--- Diagnostic & Heartbeat Monitor Active ---")
     if args.debug:
@@ -266,7 +269,11 @@ def main():
             print(f"[STATUS] Frames: {stats['total_frames']} ({fps:.1f} fps) | Valid L: {stats['valid_left']} | Valid R: {stats['valid_right']} | Valid Avg: {stats['valid_avg']} | Mouse Moves: {stats['mouse_moves']}")
             if stats['total_frames'] == 0:
                 print("  -> WARNING: No gaze data callbacks received yet from Tobii eye tracker.")
-                print("     Ensure TD Control / Tobii Service is running and the PCEye 5 is connected.")
+                print("     Troubleshooting Checklist:")
+                print("     1. Open TD Control / Tobii Settings and ensure Display Setup & Calibration are complete.")
+                print("     2. Ensure you are sitting 18-30 inches (45-75 cm) in front of the tracker.")
+                print("     3. Restart TD Control or restart 'Tobii Service' in Windows Services / Task Manager.")
+                print("     4. Ensure the PCEye 5 is plugged into a USB 3.0 port directly on the motherboard.")
             elif stats['valid_avg'] == 0:
                 print("  -> WARNING: Gaze callbacks ARE running, but gaze coordinates are NaN.")
                 print("     Ensure you are sitting within range (18-30 inches) and calibrated in TD Control.")

@@ -125,5 +125,10 @@ To maintain compatibility with OpenFace receivers, the script sends:
 * **Consumer Tobii Eye Tracker 5 vs PCEye 5**:
   * **PCEye 5 (Dynavox)**: Fully supported out of the box (includes Tobii Pro license).
   * **Tobii Eye Tracker 5 (Consumer/Gaming)**: Not natively supported by the Tobii Pro SDK unless unlocked with a Pro Upgrade license.
+* **Device Detected but `Frames: 0 (0.0 fps)` / No Mouse Cursor Movement**:
+  * **Uncalibrated Device**: The Tobii PCEye 5 will not emit gaze stream callbacks until **Display Setup** and **Calibration** are completed in TD Control. Launch TD Control and save a calibration profile.
+  * **Stalled Tobii Service**: Open Windows Task Manager / Services (`services.msc`), restart `Tobii Service` or `TD Control`, then re-run `run_tobii.bat`.
+  * **USB Port Power**: Ensure the PCEye 5 USB cable is plugged directly into a high-power USB 3.0 port on your PC's motherboard rather than an unpowered USB hub or keyboard passthrough.
+  * **User Distance**: Sit 18–30 inches (45–75 cm) directly in front of the screen so the dual IR cameras can capture your eyes.
 * **Mouse Cursor Alignment Issues**:
   * Ensure Windows display scaling (DPI) matches your screen resolution, or recalibrate inside TD Control.
