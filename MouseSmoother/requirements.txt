@@ -1,0 +1,2 @@
+# Mouse Smoother requirements
+# Note: Built using Python standard library (tkinter, ctypes, threading, json, math)
