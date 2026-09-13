@@ -7,6 +7,7 @@ from ctypes import c_int, c_uint32, c_int64, c_float, c_char_p, c_void_p, POINTE
 import traceback
 import json
 import math
+import argparse
 
 # Dependency checks for OpenCV and Python-OSC
 try:
@@ -22,6 +23,13 @@ except (ImportError, ModuleNotFoundError) as e:
     if sys.platform == "win32":
         input("\nPress Enter to exit...")
     sys.exit(1)
+
+# Mouse fallback controller
+try:
+    from pynput.mouse import Controller as MouseController
+    mouse_controller = MouseController()
+except Exception:
+    mouse_controller = None
 
 # --- Tobii Stream Engine C API Definitions ---
 TOBII_ERROR_NO_ERROR = 0
@@ -295,6 +303,61 @@ OSC_IP = "127.0.0.1"
 OSC_PORT = 9001
 CONFIG_FILE = "checkbox_states_tobii.json"
 
+def get_screen_size():
+    if sys.platform == "win32":
+        try:
+            import ctypes
+            user32 = ctypes.windll.user32
+            try:
+                user32.SetProcessDPIAware()
+            except Exception:
+                pass
+            w, h = user32.GetSystemMetrics(0), user32.GetSystemMetrics(1)
+            if w > 0 and h > 0:
+                return w, h
+        except Exception:
+            pass
+    try:
+        import tkinter
+        root = tkinter.Tk()
+        root.withdraw()
+        w = root.winfo_screenwidth()
+        h = root.winfo_screenheight()
+        root.destroy()
+        if w > 0 and h > 0:
+            return w, h
+    except Exception:
+        pass
+    return 1920, 1080
+
+def set_cursor_pos(px, py):
+    """
+    Sets system mouse cursor position using Windows SetCursorPos API (ctypes)
+    or pynput fallback.
+    """
+    if sys.platform == "win32":
+        try:
+            import ctypes
+            if ctypes.windll.user32.SetCursorPos(int(px), int(py)):
+                return True
+        except Exception:
+            pass
+    if mouse_controller is not None:
+        try:
+            mouse_controller.position = (int(px), int(py))
+            return True
+        except Exception:
+            pass
+    return False
+
+def move_cursor_to_gaze(gx, gy):
+    if not state.move_mouse or math.isnan(gx) or math.isnan(gy):
+        return False
+    sw, sh = state.screen_size
+    px = max(0.0, min(1.0, float(gx))) * sw
+    py = max(0.0, min(1.0, float(gy))) * sh
+    return set_cursor_pos(px, py)
+
 class Feature:
     def __init__(self, name, address, enabled=True, is_complex=False, max_v=1.0):
         self.name = name
@@ -311,6 +374,8 @@ class AppState:
         self.client = udp_client.SimpleUDPClient(OSC_IP, OSC_PORT)
         self.features = []
         self.config = self.load_config()
+        self.move_mouse = self.config.get("move_mouse", True)
+        self.screen_size = get_screen_size()
         self.setup_features()
         self.last_gaze_data = None
         self.last_head_pose_data = None
@@ -337,6 +402,7 @@ class AppState:
         new_config = self.config.copy()
         for f in self.features:
             new_config[f.address] = f.enabled
+        new_config["move_mouse"] = self.move_mouse
         self.config = new_config
         try:
             with open(CONFIG_FILE, 'w') as f:
@@ -394,6 +460,8 @@ def on_gaze_point(gaze_point_ptr, user_data):
         if state.features[6].enabled: state.client.send_message(state.features[6].address, gx)
         if state.features[7].enabled: state.client.send_message(state.features[7].address, gy)
 
+        move_cursor_to_gaze(gx, gy)
+
 def on_gaze_data(gaze_data_ptr, user_data):
     if not gaze_data_ptr:
         return
@@ -416,24 +484,32 @@ def on_gaze_data(gaze_data_ptr, user_data):
         'right_pupil_diameter': rp
     }
 
+    gaze_x, gaze_y = None, None
+
     # Average Gaze (Indices 6, 7)
     if valid_l and valid_r:
         avg_x = (lx + rx) / 2.0
         avg_y = (ly + ry) / 2.0
+        gaze_x, gaze_y = avg_x, avg_y
         state.features[6].current_val = avg_x
         state.features[7].current_val = avg_y
         if state.features[6].enabled: state.client.send_message(state.features[6].address, float(avg_x))
         if state.features[7].enabled: state.client.send_message(state.features[7].address, float(avg_y))
     elif valid_l:
+        gaze_x, gaze_y = lx, ly
         state.features[6].current_val = lx
         state.features[7].current_val = ly
         if state.features[6].enabled: state.client.send_message(state.features[6].address, float(lx))
         if state.features[7].enabled: state.client.send_message(state.features[7].address, float(ly))
     elif valid_r:
+        gaze_x, gaze_y = rx, ry
         state.features[6].current_val = rx
         state.features[7].current_val = ry
         if state.features[6].enabled: state.client.send_message(state.features[6].address, float(rx))
         if state.features[7].enabled: state.client.send_message(state.features[7].address, float(ry))
+
+    if gaze_x is not None and gaze_y is not None:
+        move_cursor_to_gaze(gaze_x, gaze_y)
 
     # Left Gaze (Indices 8, 9)
     if valid_l:
@@ -483,6 +559,17 @@ def on_head_pose(head_pose_ptr, user_data):
 
 def main():
     try:
+        parser = argparse.ArgumentParser(description='Stream Tobii 4C gaze and head pose data to OSC and move mouse cursor')
+        parser.add_argument('--no-mouse', action='store_true', help='Disable automatically moving mouse cursor based on gaze X and Y')
+        parser.add_argument('--ip', type=str, default=OSC_IP, help=f'OSC Destination IP (default: {OSC_IP})')
+        parser.add_argument('--port', type=int, default=OSC_PORT, help=f'OSC Destination Port (default: {OSC_PORT})')
+        args, _ = parser.parse_known_args()
+
+        if args.no_mouse:
+            state.move_mouse = False
+        if args.ip or args.port:
+            state.client = udp_client.SimpleUDPClient(args.ip, args.port)
+
         print("Loading Tobii Stream Engine library...")
         raw_lib = load_tobii_stream_engine()
 
@@ -609,16 +696,22 @@ def main():
 
         w, h = 640, 480
 
-        print(f"Streaming data to {OSC_IP}:{OSC_PORT}")
-        print("Press 'n' to cycle through trackers, ESC to exit.")
+        print(f"Streaming data to {args.ip}:{args.port}")
+        if state.move_mouse:
+            print(f"[Mouse Control] Mouse control enabled (SetCursorPos/pynput). Resolution: {state.screen_size[0]}x{state.screen_size[1]}")
+        else:
+            print("[Mouse Control] Mouse control disabled.")
+        print("Press 'm' to toggle mouse control, 'n' to cycle through trackers, ESC to exit.")
 
         while state.running:
             if api.tobii_device_process_callbacks and state.device_handle:
                 api.tobii_device_process_callbacks(state.device_handle)
 
             tracker_info = f"Tobii Stream Engine: {state.current_device_url or 'Unknown'}"
+            mouse_status = f"Mouse Control: {'ON' if state.move_mouse else 'OFF'} ('m' toggle)"
             display_img = np.zeros((h, w, 3), dtype=np.uint8)
             cv2.putText(display_img, tracker_info[:45], (10, 30), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 255, 0), 2)
+            cv2.putText(display_img, mouse_status, (10, 55), cv2.FONT_HERSHEY_SIMPLEX, 0.45, (0, 255, 0) if state.move_mouse else (0, 0, 255), 1)
 
             # Draw Gaze Visualization
             if state.last_gaze_data:
@@ -666,6 +759,10 @@ def main():
             cv2.imshow(win_name, np.hstack((display_img, sidebar)))
             key = cv2.waitKey(5) & 0xFF
             if key == 27: break  # ESC
+            if key == ord('m'):
+                state.move_mouse = not state.move_mouse
+                state.save_config()
+                print(f"[Mouse Control] Toggled mouse control: {'ON' if state.move_mouse else 'OFF'}")
             if key == ord('n') and len(state.device_urls) > 1:  # Cycle trackers
                 state.tracker_index = (state.tracker_index + 1) % len(state.device_urls)
                 switch_tracker(state.tracker_index)

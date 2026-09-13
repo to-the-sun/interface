@@ -22,8 +22,10 @@ python tobii_4c_osc.py
 ```
 
 - **Port**: Streams to `127.0.0.1:9001` by default.
+- **Mouse Control**: By default, automatically positions the screen mouse cursor based on normalized gaze X and Y coordinates. Pass `--no-mouse` to disable mouse cursor movement.
 - **Interactions**:
     - Use the checkboxes in the sidebar to toggle specific OSC addresses on or off.
+    - Press **'m'** to toggle mouse cursor control ON or OFF at runtime.
     - Press **'n'** to cycle through connected Tobii trackers.
     - Press **ESC** to exit.
 
