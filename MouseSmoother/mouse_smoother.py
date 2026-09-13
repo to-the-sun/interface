@@ -393,10 +393,10 @@ class MouseSmootherGUI:
         self.btn_toggle = ttk.Button(
             bottom_frame, text="Enable Mouse Smoothing", command=self.toggle_smoothing, width=25
         )
-        self.btn_toggle.pack(side=tk.LEFT, py=5)
+        self.btn_toggle.pack(side=tk.LEFT, pady=5)
 
         self.lbl_status = ttk.Label(bottom_frame, text="Status: Disabled", font=("Segoe UI", 10, "bold"), foreground="#cc3333")
-        self.lbl_status.pack(side=tk.RIGHT, py=5)
+        self.lbl_status.pack(side=tk.RIGHT, pady=5)
 
     def _format_curve_label(self):
         val = self.var_curve_factor.get()
