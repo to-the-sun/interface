@@ -7,7 +7,7 @@ import threading
 import tkinter as tk
 from tkinter import ttk, messagebox
 
-# Windows API constants and structure definitions
+# Windows API constants
 WH_MOUSE_LL = 14
 WM_MOUSEMOVE = 0x0200
 WM_LBUTTONDOWN = 0x0201
@@ -89,11 +89,9 @@ def compute_smoothing(jump_pixels, min_jump, max_jump, max_smoothing, curve_fact
         factor = norm
     elif curve_factor > 0:
         # Exponential curve: norm^(1 + curve_factor)
-        # As curve_factor increases, values start low and rise exponentially near 1
         factor = math.pow(norm, 1.0 + curve_factor)
     else:
         # Logarithmic curve: 1 - (1 - norm)^(1 + |curve_factor|)
-        # Starts rising steeply and levels off as norm approaches 1
         exponent = 1.0 + abs(curve_factor)
         factor = 1.0 - math.pow(1.0 - norm, exponent)
 
@@ -132,6 +130,10 @@ class MouseSmootherEngine:
             from ctypes import wintypes
             class POINT(ctypes.Structure):
                 _fields_ = [("x", wintypes.LONG), ("y", wintypes.LONG)]
+
+            ctypes.windll.user32.GetCursorPos.argtypes = [ctypes.POINTER(POINT)]
+            ctypes.windll.user32.GetCursorPos.restype = wintypes.BOOL
+
             pt = POINT()
             ctypes.windll.user32.GetCursorPos(ctypes.byref(pt))
             self.curr_x, self.curr_y = float(pt.x), float(pt.y)
@@ -149,14 +151,19 @@ class MouseSmootherEngine:
         self.running = False
         if sys.platform == 'win32' and self.hook_id:
             import ctypes
+            from ctypes import wintypes
+            ctypes.windll.user32.UnhookWindowsHookEx.argtypes = [wintypes.HHOOK]
+            ctypes.windll.user32.UnhookWindowsHookEx.restype = wintypes.BOOL
             ctypes.windll.user32.UnhookWindowsHookEx(self.hook_id)
             self.hook_id = None
 
     def _smooth_loop(self):
         if sys.platform == 'win32':
             import ctypes
-            # Request high timer resolution
+            from ctypes import wintypes
             try:
+                ctypes.windll.winmm.timeBeginPeriod.argtypes = [wintypes.UINT]
+                ctypes.windll.winmm.timeBeginPeriod.restype = wintypes.UINT
                 ctypes.windll.winmm.timeBeginPeriod(1)
             except Exception:
                 pass
@@ -193,6 +200,9 @@ class MouseSmootherEngine:
 
             # Set cursor pos on Windows
             import ctypes
+            from ctypes import wintypes
+            ctypes.windll.user32.SetCursorPos.argtypes = [ctypes.c_int, ctypes.c_int]
+            ctypes.windll.user32.SetCursorPos.restype = wintypes.BOOL
             ctypes.windll.user32.SetCursorPos(new_ix, new_iy)
 
     def _hook_loop(self):
@@ -208,29 +218,69 @@ class MouseSmootherEngine:
                 ("mouseData", wintypes.DWORD),
                 ("flags", wintypes.DWORD),
                 ("time", wintypes.DWORD),
-                ("dwExtraInfo", ctypes.POINTER(wintypes.ULONG))
+                ("dwExtraInfo", ctypes.c_size_t)  # ULONG_PTR on Windows 64-bit/32-bit
             ]
 
+        # Declare HOOKPROC signature: LRESULT CALLBACK LowLevelMouseProc(int nCode, WPARAM wParam, LPARAM lParam)
         HOOKPROC = ctypes.WINFUNCTYPE(ctypes.c_ssize_t, ctypes.c_int, wintypes.WPARAM, wintypes.LPARAM)
 
-        def low_level_mouse_proc(nCode, wParam, lParam):
-            if nCode >= 0 and wParam == WM_MOUSEMOVE:
-                ms = ctypes.cast(lParam, ctypes.POINTER(MSLLHOOKSTRUCT)).contents
-                raw_x = ms.pt.x
-                raw_y = ms.pt.y
+        # Declare API function signatures
+        ctypes.windll.user32.SetWindowsHookExW.argtypes = [
+            ctypes.c_int, HOOKPROC, wintypes.HINSTANCE, wintypes.DWORD
+        ]
+        ctypes.windll.user32.SetWindowsHookExW.restype = wintypes.HHOOK
 
-                with self.lock:
-                    if raw_x != int(round(self.curr_x)) or raw_y != int(round(self.curr_y)):
-                        self.target_x = float(raw_x)
-                        self.target_y = float(raw_y)
-                        self.last_raw_x = raw_x
-                        self.last_raw_y = raw_y
+        ctypes.windll.user32.CallNextHookEx.argtypes = [
+            wintypes.HHOOK, ctypes.c_int, wintypes.WPARAM, wintypes.LPARAM
+        ]
+        ctypes.windll.user32.CallNextHookEx.restype = ctypes.c_ssize_t
+
+        ctypes.windll.kernel32.GetModuleHandleW.argtypes = [wintypes.LPCWSTR]
+        ctypes.windll.kernel32.GetModuleHandleW.restype = wintypes.HINSTANCE
+
+        ctypes.windll.user32.GetMessageW.argtypes = [
+            ctypes.POINTER(wintypes.MSG), wintypes.HWND, wintypes.UINT, wintypes.UINT
+        ]
+        ctypes.windll.user32.GetMessageW.restype = wintypes.BOOL
+
+        ctypes.windll.user32.TranslateMessage.argtypes = [ctypes.POINTER(wintypes.MSG)]
+        ctypes.windll.user32.TranslateMessage.restype = wintypes.BOOL
+
+        ctypes.windll.user32.DispatchMessageW.argtypes = [ctypes.POINTER(wintypes.MSG)]
+        ctypes.windll.user32.DispatchMessageW.restype = ctypes.c_ssize_t
+
+        def low_level_mouse_proc(nCode, wParam, lParam):
+            try:
+                if nCode >= 0 and wParam == WM_MOUSEMOVE:
+                    ms = ctypes.cast(lParam, ctypes.POINTER(MSLLHOOKSTRUCT)).contents
+                    # Ignore injected events if LLMHF_INJECTED is set
+                    if not (ms.flags & LLMHF_INJECTED):
+                        raw_x = ms.pt.x
+                        raw_y = ms.pt.y
+
+                        with self.lock:
+                            dx = raw_x - self.last_raw_x
+                            dy = raw_y - self.last_raw_y
+                            self.last_raw_x = raw_x
+                            self.last_raw_y = raw_y
+
+                            # Accumulate delta onto smooth target
+                            self.target_x += dx
+                            self.target_y += dy
+                    else:
+                        # Update last_raw_x/y to match current cursor location for injected moves
+                        with self.lock:
+                            self.last_raw_x = ms.pt.x
+                            self.last_raw_y = ms.pt.y
+            except Exception as e:
+                pass
 
             return ctypes.windll.user32.CallNextHookEx(self.hook_id, nCode, wParam, lParam)
 
         self.hook_proc_ref = HOOKPROC(low_level_mouse_proc)
+        h_module = ctypes.windll.kernel32.GetModuleHandleW(None)
         self.hook_id = ctypes.windll.user32.SetWindowsHookExW(
-            WH_MOUSE_LL, self.hook_proc_ref, ctypes.windll.kernel32.GetModuleHandleW(None), 0
+            WH_MOUSE_LL, self.hook_proc_ref, h_module, 0
         )
 
         msg = wintypes.MSG()
