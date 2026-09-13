@@ -1,42 +1,208 @@
 import sys
 import time
 import os
+import ctypes
+from ctypes import c_int, c_uint32, c_int64, c_float, c_char_p, c_void_p, POINTER, Structure, CFUNCTYPE
 import traceback
 import json
 import math
 
-try:
-    import tobii_research as tr
-except (ImportError, ModuleNotFoundError):
-    py_ver = f"{sys.version_info.major}.{sys.version_info.minor}.{sys.version_info.micro}"
-    print("=" * 72)
-    print("ERROR: Failed to import 'tobii_research'.")
-    print(f"Current Python version: {py_ver}")
-    print("\n'tobii-research' (Tobii Pro SDK) only provides pre-compiled wheels")
-    print("on PyPI for Python 3.10 (and 3.8) 64-bit.")
-    print("It does NOT support Python 3.11, 3.12, or newer versions.")
-    print("\nPlease ensure you are running Python 3.10 (64-bit):")
-    print("  1. Download Python 3.10: https://www.python.org/downloads/release/python-31011/")
-    print("  2. Install dependencies: py -3.10 -m pip install -r requirements.txt")
-    print("  3. Run script: py -3.10 tobii_4c_osc.py")
-    print("=" * 72)
-    if sys.platform == "win32":
-        input("\nPress Enter to exit...")
-    sys.exit(1)
-
+# Dependency checks for OpenCV and Python-OSC
 try:
     import cv2
     import numpy as np
     from pythonosc import udp_client
 except (ImportError, ModuleNotFoundError) as e:
     print("=" * 72)
-    print(f"ERROR: Missing required dependency ({e.name}).")
+    print(f"ERROR: Missing required dependency ({getattr(e, 'name', str(e))}).")
     print("Please install required dependencies with:")
     print("  pip install -r requirements.txt")
     print("=" * 72)
     if sys.platform == "win32":
         input("\nPress Enter to exit...")
     sys.exit(1)
+
+# --- Tobii Stream Engine C API Definitions ---
+TOBII_ERROR_NO_ERROR = 0
+
+class TobiiValidity:
+    TOBII_VALIDITY_INVALID = 0
+    TOBII_VALIDITY_VALID = 1
+
+class tobii_gaze_point_t(Structure):
+    _fields_ = [
+        ("timestamp_us", c_int64),
+        ("validity", c_int),
+        ("position_xy", c_float * 2),
+    ]
+
+class tobii_gaze_data_t(Structure):
+    _fields_ = [
+        ("timestamp_us", c_int64),
+        ("left_gaze_point_validity", c_int),
+        ("left_gaze_point_on_display_normalized", c_float * 2),
+        ("left_gaze_origin_validity", c_int),
+        ("left_gaze_origin_in_user_coordinate_system_mm", c_float * 3),
+        ("left_pupil_validity", c_int),
+        ("left_pupil_diameter_mm", c_float),
+        ("right_gaze_point_validity", c_int),
+        ("right_gaze_point_on_display_normalized", c_float * 2),
+        ("right_gaze_origin_validity", c_int),
+        ("right_gaze_origin_in_user_coordinate_system_mm", c_float * 3),
+        ("right_pupil_validity", c_int),
+        ("right_pupil_diameter_mm", c_float),
+    ]
+
+class tobii_head_pose_t(Structure):
+    _fields_ = [
+        ("timestamp_us", c_int64),
+        ("position_validity", c_int),
+        ("position_xyz", c_float * 3),
+        ("rotation_validity", c_int),
+        ("rotation_xyz", c_float * 3),
+    ]
+
+# Callback C Function Types
+tobii_url_receiver_t = CFUNCTYPE(None, c_char_p, c_void_p)
+tobii_gaze_point_callback_t = CFUNCTYPE(None, POINTER(tobii_gaze_point_t), c_void_p)
+tobii_gaze_data_callback_t = CFUNCTYPE(None, POINTER(tobii_gaze_data_t), c_void_p)
+tobii_head_pose_callback_t = CFUNCTYPE(None, POINTER(tobii_head_pose_t), c_void_p)
+
+
+def load_tobii_stream_engine():
+    """Attempts to locate and load the Tobii Stream Engine shared library / DLL."""
+    lib_names = []
+    if sys.platform == "win32":
+        lib_names = ["tobii_stream_engine.dll", "libtobii_stream_engine.dll"]
+    elif sys.platform == "darwin":
+        lib_names = ["libtobii_stream_engine.dylib"]
+    else:
+        lib_names = ["libtobii_stream_engine.so"]
+
+    search_dirs = [
+        os.path.dirname(os.path.abspath(__file__)),
+        os.getcwd(),
+        r"C:\Program Files\Tobii\Tobii EyeX",
+        r"C:\Program Files (x86)\Tobii\Tobii EyeX",
+        r"C:\Program Files\Tobii\Tobii Stream Engine",
+        r"C:\Program Files (x86)\Tobii\Tobii Stream Engine",
+        r"C:\Program Files\Tobii\Tobii Eye Tracker Core Software",
+        r"C:\Program Files (x86)\Tobii\Tobii Eye Tracker Core Software",
+        r"C:\Program Files\Tobii\Tobii Core Software",
+        r"C:\Program Files (x86)\Tobii\Tobii Core Software",
+    ]
+
+    for d in search_dirs:
+        for name in lib_names:
+            full_path = os.path.join(d, name)
+            if os.path.exists(full_path):
+                try:
+                    if hasattr(os, "add_dll_directory") and sys.platform == "win32":
+                        try:
+                            os.add_dll_directory(d)
+                        except Exception:
+                            pass
+                    return ctypes.CDLL(full_path)
+                except Exception:
+                    pass
+
+    # Try standard system load
+    for name in lib_names:
+        try:
+            return ctypes.CDLL(name)
+        except Exception:
+            pass
+
+    import ctypes.util
+    found_lib = ctypes.util.find_library("tobii_stream_engine")
+    if found_lib:
+        try:
+            return ctypes.CDLL(found_lib)
+        except Exception:
+            pass
+
+    return None
+
+
+# Binding Stream Engine Library API
+class TobiiStreamEngineAPI:
+    def __init__(self, lib):
+        self.lib = lib
+        if not self.lib:
+            return
+
+        # tobii_api_create
+        self.tobii_api_create = getattr(self.lib, "tobii_api_create", None)
+        if self.tobii_api_create:
+            self.tobii_api_create.argtypes = [POINTER(c_void_p), c_void_p, c_void_p]
+            self.tobii_api_create.restype = c_int
+
+        # tobii_api_destroy
+        self.tobii_api_destroy = getattr(self.lib, "tobii_api_destroy", None)
+        if self.tobii_api_destroy:
+            self.tobii_api_destroy.argtypes = [c_void_p]
+            self.tobii_api_destroy.restype = c_int
+
+        # tobii_enumerate_local_device_urls
+        self.tobii_enumerate_local_device_urls = getattr(self.lib, "tobii_enumerate_local_device_urls", None)
+        if self.tobii_enumerate_local_device_urls:
+            self.tobii_enumerate_local_device_urls.argtypes = [c_void_p, tobii_url_receiver_t, c_void_p]
+            self.tobii_enumerate_local_device_urls.restype = c_int
+
+        # tobii_device_create
+        self.tobii_device_create = getattr(self.lib, "tobii_device_create", None)
+        if self.tobii_device_create:
+            self.tobii_device_create.argtypes = [c_void_p, c_char_p, c_void_p, POINTER(c_void_p)]
+            self.tobii_device_create.restype = c_int
+
+        # tobii_device_destroy
+        self.tobii_device_destroy = getattr(self.lib, "tobii_device_destroy", None)
+        if self.tobii_device_destroy:
+            self.tobii_device_destroy.argtypes = [c_void_p]
+            self.tobii_device_destroy.restype = c_int
+
+        # tobii_device_process_callbacks
+        self.tobii_device_process_callbacks = getattr(self.lib, "tobii_device_process_callbacks", None)
+        if self.tobii_device_process_callbacks:
+            self.tobii_device_process_callbacks.argtypes = [c_void_p]
+            self.tobii_device_process_callbacks.restype = c_int
+
+        # tobii_gaze_point_subscribe
+        self.tobii_gaze_point_subscribe = getattr(self.lib, "tobii_gaze_point_subscribe", None)
+        if self.tobii_gaze_point_subscribe:
+            self.tobii_gaze_point_subscribe.argtypes = [c_void_p, tobii_gaze_point_callback_t, c_void_p]
+            self.tobii_gaze_point_subscribe.restype = c_int
+
+        # tobii_gaze_point_unsubscribe
+        self.tobii_gaze_point_unsubscribe = getattr(self.lib, "tobii_gaze_point_unsubscribe", None)
+        if self.tobii_gaze_point_unsubscribe:
+            self.tobii_gaze_point_unsubscribe.argtypes = [c_void_p]
+            self.tobii_gaze_point_unsubscribe.restype = c_int
+
+        # tobii_gaze_data_subscribe
+        self.tobii_gaze_data_subscribe = getattr(self.lib, "tobii_gaze_data_subscribe", None)
+        if self.tobii_gaze_data_subscribe:
+            self.tobii_gaze_data_subscribe.argtypes = [c_void_p, tobii_gaze_data_callback_t, c_void_p]
+            self.tobii_gaze_data_subscribe.restype = c_int
+
+        # tobii_gaze_data_unsubscribe
+        self.tobii_gaze_data_unsubscribe = getattr(self.lib, "tobii_gaze_data_unsubscribe", None)
+        if self.tobii_gaze_data_unsubscribe:
+            self.tobii_gaze_data_unsubscribe.argtypes = [c_void_p]
+            self.tobii_gaze_data_unsubscribe.restype = c_int
+
+        # tobii_head_pose_subscribe
+        self.tobii_head_pose_subscribe = getattr(self.lib, "tobii_head_pose_subscribe", None)
+        if self.tobii_head_pose_subscribe:
+            self.tobii_head_pose_subscribe.argtypes = [c_void_p, tobii_head_pose_callback_t, c_void_p]
+            self.tobii_head_pose_subscribe.restype = c_int
+
+        # tobii_head_pose_unsubscribe
+        self.tobii_head_pose_unsubscribe = getattr(self.lib, "tobii_head_pose_unsubscribe", None)
+        if self.tobii_head_pose_unsubscribe:
+            self.tobii_head_pose_unsubscribe.argtypes = [c_void_p]
+            self.tobii_head_pose_unsubscribe.restype = c_int
+
 
 # --- Configuration ---
 OSC_IP = "127.0.0.1"
@@ -62,16 +228,22 @@ class AppState:
         self.setup_features()
         self.last_gaze_data = None
         self.last_head_pose_data = None
-        self.eyetracker = None
-        self.all_eyetrackers = []
+        self.device_urls = []
+        self.current_device_url = None
+        self.api_handle = None
+        self.device_handle = None
         self.tracker_index = 0
+        self.c_gaze_data_cb = None
+        self.c_gaze_point_cb = None
+        self.c_head_pose_cb = None
+        self.c_url_cb = None
 
     def load_config(self):
         if os.path.exists(CONFIG_FILE):
             try:
                 with open(CONFIG_FILE, 'r') as f:
                     return json.load(f)
-            except:
+            except Exception:
                 pass
         return {}
 
@@ -83,7 +255,7 @@ class AppState:
         try:
             with open(CONFIG_FILE, 'w') as f:
                 json.dump(self.config, f)
-        except:
+        except Exception:
             pass
 
     def setup_features(self):
@@ -123,23 +295,40 @@ def on_mouse(event, x, y, flags, param):
                 state.save_config()
                 break
 
-def gaze_data_callback(gaze_data):
-    state.last_gaze_data = gaze_data
+def on_gaze_point(gaze_point_ptr, user_data):
+    if not gaze_point_ptr:
+        return
+    gp = gaze_point_ptr.contents
+    if gp.validity == TobiiValidity.TOBII_VALIDITY_VALID:
+        gx, gy = float(gp.position_xy[0]), float(gp.position_xy[1])
+        state.last_gaze_data = {'left_gaze_point_on_display_area': (gx, gy), 'right_gaze_point_on_display_area': (gx, gy)}
 
-    # Use dot notation but fallback to dictionary access to be robust across SDK versions
-    try:
-        lx, ly = gaze_data.left_gaze_point_on_display_area
-        rx, ry = gaze_data.right_gaze_point_on_display_area
-        lp = gaze_data.left_pupil_diameter
-        rp = gaze_data.right_pupil_diameter
-    except (AttributeError, TypeError):
-        lx, ly = gaze_data['left_gaze_point_on_display_area']
-        rx, ry = gaze_data['right_gaze_point_on_display_area']
-        lp = gaze_data['left_pupil_diameter']
-        rp = gaze_data['right_pupil_diameter']
+        state.features[6].current_val = gx
+        state.features[7].current_val = gy
+        if state.features[6].enabled: state.client.send_message(state.features[6].address, gx)
+        if state.features[7].enabled: state.client.send_message(state.features[7].address, gy)
 
-    valid_l = not (math.isnan(lx) or math.isnan(ly))
-    valid_r = not (math.isnan(rx) or math.isnan(ry))
+def on_gaze_data(gaze_data_ptr, user_data):
+    if not gaze_data_ptr:
+        return
+    gd = gaze_data_ptr.contents
+
+    valid_l = (gd.left_gaze_point_validity == TobiiValidity.TOBII_VALIDITY_VALID)
+    valid_r = (gd.right_gaze_point_validity == TobiiValidity.TOBII_VALIDITY_VALID)
+
+    lx = float(gd.left_gaze_point_on_display_normalized[0]) if valid_l else float('nan')
+    ly = float(gd.left_gaze_point_on_display_normalized[1]) if valid_l else float('nan')
+    rx = float(gd.right_gaze_point_on_display_normalized[0]) if valid_r else float('nan')
+    ry = float(gd.right_gaze_point_on_display_normalized[1]) if valid_r else float('nan')
+    lp = float(gd.left_pupil_diameter_mm) if gd.left_pupil_validity == TobiiValidity.TOBII_VALIDITY_VALID else float('nan')
+    rp = float(gd.right_pupil_diameter_mm) if gd.right_pupil_validity == TobiiValidity.TOBII_VALIDITY_VALID else float('nan')
+
+    state.last_gaze_data = {
+        'left_gaze_point_on_display_area': (lx, ly),
+        'right_gaze_point_on_display_area': (rx, ry),
+        'left_pupil_diameter': lp,
+        'right_pupil_diameter': rp
+    }
 
     # Average Gaze (Indices 6, 7)
     if valid_l and valid_r:
@@ -149,6 +338,16 @@ def gaze_data_callback(gaze_data):
         state.features[7].current_val = avg_y
         if state.features[6].enabled: state.client.send_message(state.features[6].address, float(avg_x))
         if state.features[7].enabled: state.client.send_message(state.features[7].address, float(avg_y))
+    elif valid_l:
+        state.features[6].current_val = lx
+        state.features[7].current_val = ly
+        if state.features[6].enabled: state.client.send_message(state.features[6].address, float(lx))
+        if state.features[7].enabled: state.client.send_message(state.features[7].address, float(ly))
+    elif valid_r:
+        state.features[6].current_val = rx
+        state.features[7].current_val = ry
+        if state.features[6].enabled: state.client.send_message(state.features[6].address, float(rx))
+        if state.features[7].enabled: state.client.send_message(state.features[7].address, float(ry))
 
     # Left Gaze (Indices 8, 9)
     if valid_l:
@@ -172,53 +371,147 @@ def gaze_data_callback(gaze_data):
         state.features[13].current_val = rp
         if state.features[13].enabled: state.client.send_message(state.features[13].address, float(rp))
 
-def head_pose_callback(head_pose_data):
-    state.last_head_pose_data = head_pose_data
+def on_head_pose(head_pose_ptr, user_data):
+    if not head_pose_ptr:
+        return
+    hp = head_pose_ptr.contents
 
-    try:
-        pos = head_pose_data.head_position_eye_center
-        ori = head_pose_data.head_orientation_rotation_vector
-    except (AttributeError, TypeError):
-        pos = head_pose_data['head_position_eye_center']
-        ori = head_pose_data['head_orientation_rotation_vector']
+    pos_valid = (hp.position_validity == TobiiValidity.TOBII_VALIDITY_VALID)
+    rot_valid = (hp.rotation_validity == TobiiValidity.TOBII_VALIDITY_VALID)
 
-    if not math.isnan(pos[0]):
-        # Mapping to features 0-5. Convert radians to degrees for rotation components.
-        vals = [pos[0], pos[1], pos[2], math.degrees(ori[0]), math.degrees(ori[1]), math.degrees(ori[2])]
-        for i in range(6):
-            f = state.features[i]
-            f.current_val = vals[i]
-            if f.enabled:
-                state.client.send_message(f.address, float(vals[i]))
+    px = float(hp.position_xyz[0]) if pos_valid else 0.0
+    py = float(hp.position_xyz[1]) if pos_valid else 0.0
+    pz = float(hp.position_xyz[2]) if pos_valid else 0.0
+
+    rx = math.degrees(float(hp.rotation_xyz[0])) if rot_valid else 0.0
+    ry = math.degrees(float(hp.rotation_xyz[1])) if rot_valid else 0.0
+    rz = math.degrees(float(hp.rotation_xyz[2])) if rot_valid else 0.0
+
+    vals = [px, py, pz, rx, ry, rz]
+    for i in range(6):
+        f = state.features[i]
+        f.current_val = vals[i]
+        if f.enabled:
+            state.client.send_message(f.address, float(vals[i]))
+
 
 def main():
     try:
-        print("Searching for Tobii eye trackers...")
-        state.all_eyetrackers = tr.find_all_eyetrackers()
+        print("Loading Tobii Stream Engine library...")
+        raw_lib = load_tobii_stream_engine()
 
-        if len(state.all_eyetrackers) == 0:
-            print("No Tobii eye trackers found!")
-            print("Ensure Tobii Core software is running and the device is connected.")
-            input("\nPress Enter to exit...")
+        if not raw_lib:
+            print("=" * 72)
+            print("ERROR: Could not load 'tobii_stream_engine.dll' (or system equivalent).")
+            print("\nPlease ensure Tobii Eye Tracking Service / Stream Engine is installed:")
+            print("  1. Download and install Tobii Experience or Tobii Core Software.")
+            print("  2. Verify 'tobii_stream_engine.dll' is present in system PATH or program folder.")
+            print("=" * 72)
+            if sys.platform == "win32":
+                input("\nPress Enter to exit...")
             return
 
+        api = TobiiStreamEngineAPI(raw_lib)
+
+        if not api.tobii_api_create:
+            print("ERROR: API functions missing from Tobii Stream Engine library.")
+            if sys.platform == "win32":
+                input("\nPress Enter to exit...")
+            return
+
+        api_ptr = c_void_p()
+        res = api.tobii_api_create(ctypes.byref(api_ptr), None, None)
+        if res != TOBII_ERROR_NO_ERROR or not api_ptr:
+            print(f"ERROR: tobii_api_create failed with status code {res}.")
+            if sys.platform == "win32":
+                input("\nPress Enter to exit...")
+            return
+        state.api_handle = api_ptr
+
+        print("Searching for Tobii eye trackers via Stream Engine...")
+
+        found_urls = []
+        def url_receiver(url_c, user_data):
+            if url_c:
+                found_urls.append(url_c.decode('utf-8'))
+
+        state.c_url_cb = tobii_url_receiver_t(url_receiver)
+
+        if api.tobii_enumerate_local_device_urls:
+            api.tobii_enumerate_local_device_urls(state.api_handle, state.c_url_cb, None)
+
+        state.device_urls = found_urls
+
+        if len(state.device_urls) == 0:
+            print("No Tobii eye trackers found via Tobii Stream Engine API!")
+            print("Ensure Tobii Core software / Eye Tracking Service is running and device is connected.")
+            if api.tobii_api_destroy and state.api_handle:
+                api.tobii_api_destroy(state.api_handle)
+            if sys.platform == "win32":
+                input("\nPress Enter to exit...")
+            return
+
+        # Prepare persistent callback objects
+        state.c_gaze_data_cb = tobii_gaze_data_callback_t(on_gaze_data)
+        state.c_gaze_point_cb = tobii_gaze_point_callback_t(on_gaze_point)
+        state.c_head_pose_cb = tobii_head_pose_callback_t(on_head_pose)
+
         def switch_tracker(idx):
-            if state.eyetracker:
-                state.eyetracker.unsubscribe_from(tr.EYETRACKER_GAZE_DATA)
-                try: state.eyetracker.unsubscribe_from(tr.EYETRACKER_HEAD_POSE)
-                except: pass
+            if state.device_handle:
+                if api.tobii_gaze_data_unsubscribe:
+                    try: api.tobii_gaze_data_unsubscribe(state.device_handle)
+                    except Exception: pass
+                if api.tobii_gaze_point_unsubscribe:
+                    try: api.tobii_gaze_point_unsubscribe(state.device_handle)
+                    except Exception: pass
+                if api.tobii_head_pose_unsubscribe:
+                    try: api.tobii_head_pose_unsubscribe(state.device_handle)
+                    except Exception: pass
+                if api.tobii_device_destroy:
+                    try: api.tobii_device_destroy(state.device_handle)
+                    except Exception: pass
+                state.device_handle = None
 
-            state.eyetracker = state.all_eyetrackers[idx]
-            state.eyetracker.subscribe_to(tr.EYETRACKER_GAZE_DATA, gaze_data_callback)
-            try:
-                state.eyetracker.subscribe_to(tr.EYETRACKER_HEAD_POSE, head_pose_callback)
-                print(f"Subscribed to Head Pose on {state.eyetracker.model}")
-            except:
-                print(f"Head Pose not supported on {state.eyetracker.model}")
+            url = state.device_urls[idx]
+            state.current_device_url = url
+            dev_ptr = c_void_p()
+            ret = api.tobii_device_create(state.api_handle, url.encode('utf-8'), None, ctypes.byref(dev_ptr))
+            if ret != TOBII_ERROR_NO_ERROR or not dev_ptr:
+                print(f"Failed to create Tobii device for URL '{url}' (error: {ret})")
+                return False
 
-        switch_tracker(0)
+            state.device_handle = dev_ptr
 
-        win_name = 'Tobii 4C OSC'
+            # Subscribe gaze data (fallback to gaze point if gaze data not supported)
+            gaze_sub = False
+            if api.tobii_gaze_data_subscribe:
+                r = api.tobii_gaze_data_subscribe(state.device_handle, state.c_gaze_data_cb, None)
+                if r == TOBII_ERROR_NO_ERROR:
+                    gaze_sub = True
+                    print(f"Subscribed to Gaze Data on {url}")
+
+            if not gaze_sub and api.tobii_gaze_point_subscribe:
+                r = api.tobii_gaze_point_subscribe(state.device_handle, state.c_gaze_point_cb, None)
+                if r == TOBII_ERROR_NO_ERROR:
+                    print(f"Subscribed to Gaze Point on {url}")
+
+            # Subscribe head pose
+            if api.tobii_head_pose_subscribe:
+                r = api.tobii_head_pose_subscribe(state.device_handle, state.c_head_pose_cb, None)
+                if r == TOBII_ERROR_NO_ERROR:
+                    print(f"Subscribed to Head Pose on {url}")
+                else:
+                    print(f"Head Pose subscription unavailable or not supported on {url}")
+
+            return True
+
+        if not switch_tracker(0):
+            print("Failed to connect to primary Tobii device.")
+            if sys.platform == "win32":
+                input("\nPress Enter to exit...")
+            return
+
+        win_name = 'Tobii 4C OSC (Stream Engine)'
         cv2.namedWindow(win_name, cv2.WINDOW_NORMAL)
         cv2.resizeWindow(win_name, 1420, 480)
         cv2.setMouseCallback(win_name, on_mouse)
@@ -229,25 +522,27 @@ def main():
         print("Press 'n' to cycle through trackers, ESC to exit.")
 
         while state.running:
-            tracker_info = f"{state.eyetracker.model} ({state.eyetracker.serial_number})"
+            if api.tobii_device_process_callbacks and state.device_handle:
+                api.tobii_device_process_callbacks(state.device_handle)
+
+            tracker_info = f"Tobii Stream Engine: {state.current_device_url or 'Unknown'}"
             display_img = np.zeros((h, w, 3), dtype=np.uint8)
-            cv2.putText(display_img, tracker_info, (10, 30), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 255, 0), 2)
+            cv2.putText(display_img, tracker_info[:45], (10, 30), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 255, 0), 2)
 
             # Draw Gaze Visualization
             if state.last_gaze_data:
-                try:
-                    lx, ly = state.last_gaze_data.left_gaze_point_on_display_area
-                    rx, ry = state.last_gaze_data.right_gaze_point_on_display_area
-                except (AttributeError, TypeError):
-                    lx, ly = state.last_gaze_data['left_gaze_point_on_display_area']
-                    rx, ry = state.last_gaze_data['right_gaze_point_on_display_area']
+                lx, ly = state.last_gaze_data.get('left_gaze_point_on_display_area', (float('nan'), float('nan')))
+                rx, ry = state.last_gaze_data.get('right_gaze_point_on_display_area', (float('nan'), float('nan')))
 
-                if not (math.isnan(lx) or math.isnan(ly)):
+                valid_l = not (math.isnan(lx) or math.isnan(ly))
+                valid_r = not (math.isnan(rx) or math.isnan(ry))
+
+                if valid_l:
                     cv2.circle(display_img, (int(lx * w), int(ly * h)), 10, (255, 0, 0), 2)
-                if not (math.isnan(rx) or math.isnan(ry)):
+                if valid_r:
                     cv2.circle(display_img, (int(rx * w), int(ry * h)), 10, (0, 0, 255), 2)
 
-                if not (math.isnan(lx) or math.isnan(ly)) and not (math.isnan(rx) or math.isnan(ry)):
+                if valid_l and valid_r:
                     avg_x = (lx + rx) / 2.0
                     avg_y = (ly + ry) / 2.0
                     cv2.drawMarker(display_img, (int(avg_x * w), int(avg_y * h)), (0, 255, 0), cv2.MARKER_CROSS, 20, 2)
@@ -279,24 +574,39 @@ def main():
 
             cv2.imshow(win_name, np.hstack((display_img, sidebar)))
             key = cv2.waitKey(5) & 0xFF
-            if key == 27: break # ESC
-            if key == ord('n'): # Cycle trackers
-                state.tracker_index = (state.tracker_index + 1) % len(state.all_eyetrackers)
+            if key == 27: break  # ESC
+            if key == ord('n') and len(state.device_urls) > 1:  # Cycle trackers
+                state.tracker_index = (state.tracker_index + 1) % len(state.device_urls)
                 switch_tracker(state.tracker_index)
 
             time.sleep(0.001)
 
-        state.eyetracker.unsubscribe_from(tr.EYETRACKER_GAZE_DATA)
-        try:
-            state.eyetracker.unsubscribe_from(tr.EYETRACKER_HEAD_POSE)
-        except:
-            pass
+        # Cleanup device and API
+        if state.device_handle:
+            if api.tobii_gaze_data_unsubscribe:
+                try: api.tobii_gaze_data_unsubscribe(state.device_handle)
+                except Exception: pass
+            if api.tobii_gaze_point_unsubscribe:
+                try: api.tobii_gaze_point_unsubscribe(state.device_handle)
+                except Exception: pass
+            if api.tobii_head_pose_unsubscribe:
+                try: api.tobii_head_pose_unsubscribe(state.device_handle)
+                except Exception: pass
+            if api.tobii_device_destroy:
+                try: api.tobii_device_destroy(state.device_handle)
+                except Exception: pass
+
+        if state.api_handle and api.tobii_api_destroy:
+            try: api.tobii_api_destroy(state.api_handle)
+            except Exception: pass
+
         cv2.destroyAllWindows()
-        print("Successfully unsubscribed and closed.")
+        print("Successfully unsubscribed and closed Tobii Stream Engine session.")
 
     except Exception:
         traceback.print_exc()
-        input("\nPress Enter to close...")
+        if sys.platform == "win32":
+            input("\nPress Enter to close...")
 
 if __name__ == "__main__":
     main()
