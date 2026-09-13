@@ -119,7 +119,12 @@ def load_tobii_stream_engine():
                 try:
                     return ctypes.CDLL(full_path)
                 except Exception as err:
-                    last_errors.append(f"Found '{full_path}' but failed to load: {err}")
+                    last_errors.append(f"Found '{full_path}' but failed to load (CDLL): {err}")
+                    if sys.platform == "win32":
+                        try:
+                            return ctypes.WinDLL(full_path)
+                        except Exception as win_err:
+                            last_errors.append(f"Found '{full_path}' but failed to load (WinDLL): {win_err}")
 
     # Try standard system load
     for name in lib_names:
@@ -229,35 +234,50 @@ class TobiiStreamEngineAPI:
         if not self.raw_tobii_device_create:
             return TOBII_ERROR_NO_ERROR - 1
 
-        # 1. Try 3-parameter signature: (api_handle, url_bytes, byref(dev_ptr))
-        try:
-            self.raw_tobii_device_create.argtypes = [c_void_p, c_char_p, POINTER(c_void_p)]
-            self.raw_tobii_device_create.restype = c_int
-            ret = self.raw_tobii_device_create(api_handle, url_bytes, dev_ptr_ref)
-            if ret == TOBII_ERROR_NO_ERROR and dev_ptr_ref.value:
-                return ret
-        except Exception:
-            pass
+        attempts = []
 
-        # 2. Try 4-parameter signature with TOBII_FIELD_OF_USE_INTERACTIVE
-        try:
-            self.raw_tobii_device_create.argtypes = [c_void_p, c_char_p, c_int, POINTER(c_void_p)]
-            self.raw_tobii_device_create.restype = c_int
-            ret = self.raw_tobii_device_create(api_handle, url_bytes, TobiiFieldOfUse.TOBII_FIELD_OF_USE_INTERACTIVE, dev_ptr_ref)
-            if ret == TOBII_ERROR_NO_ERROR and dev_ptr_ref.value:
-                return ret
-        except Exception:
-            pass
+        # Candidate URLs: Specific device URL bytes, None (for default device)
+        url_candidates = [url_bytes, None]
 
-        # 3. Try 4-parameter signature with TOBII_FIELD_OF_USE_DEFAULT
-        try:
-            self.raw_tobii_device_create.argtypes = [c_void_p, c_char_p, c_int, POINTER(c_void_p)]
-            self.raw_tobii_device_create.restype = c_int
-            ret = self.raw_tobii_device_create(api_handle, url_bytes, TobiiFieldOfUse.TOBII_FIELD_OF_USE_DEFAULT, dev_ptr_ref)
-            return ret
-        except Exception as e:
-            print(f"Exception invoking tobii_device_create: {e}")
-            return -1
+        for u in url_candidates:
+            # Variant A: 3 parameters (api_handle, url, device_ptr)
+            try:
+                self.raw_tobii_device_create.argtypes = [c_void_p, c_char_p, POINTER(c_void_p)]
+                self.raw_tobii_device_create.restype = c_int
+                ret = self.raw_tobii_device_create(api_handle, u, dev_ptr_ref)
+                if ret == TOBII_ERROR_NO_ERROR and dev_ptr_ref.value:
+                    return ret
+                attempts.append(f"3-param (url={'default' if u is None else u.decode('utf-8', 'ignore')}): code {ret} ({self.get_error_str(ret)})")
+            except Exception as e:
+                attempts.append(f"3-param exception: {e}")
+
+            # Variant B: 4 parameters with field of use INTERACTIVE (1)
+            try:
+                self.raw_tobii_device_create.argtypes = [c_void_p, c_char_p, c_int, POINTER(c_void_p)]
+                self.raw_tobii_device_create.restype = c_int
+                ret = self.raw_tobii_device_create(api_handle, u, TobiiFieldOfUse.TOBII_FIELD_OF_USE_INTERACTIVE, dev_ptr_ref)
+                if ret == TOBII_ERROR_NO_ERROR and dev_ptr_ref.value:
+                    return ret
+                attempts.append(f"4-param INTERACTIVE (url={'default' if u is None else u.decode('utf-8', 'ignore')}): code {ret} ({self.get_error_str(ret)})")
+            except Exception as e:
+                attempts.append(f"4-param INTERACTIVE exception: {e}")
+
+            # Variant C: 4 parameters with field of use DEFAULT (0)
+            try:
+                self.raw_tobii_device_create.argtypes = [c_void_p, c_char_p, c_int, POINTER(c_void_p)]
+                self.raw_tobii_device_create.restype = c_int
+                ret = self.raw_tobii_device_create(api_handle, u, TobiiFieldOfUse.TOBII_FIELD_OF_USE_DEFAULT, dev_ptr_ref)
+                if ret == TOBII_ERROR_NO_ERROR and dev_ptr_ref.value:
+                    return ret
+                attempts.append(f"4-param DEFAULT (url={'default' if u is None else u.decode('utf-8', 'ignore')}): code {ret} ({self.get_error_str(ret)})")
+            except Exception as e:
+                attempts.append(f"4-param DEFAULT exception: {e}")
+
+        print("\n[Device Create Diagnostic Attempts]:")
+        for att in attempts:
+            print(f" - {att}")
+
+        return -1
 
     def get_error_str(self, err_code):
         if self.tobii_error_message:
