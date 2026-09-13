@@ -361,6 +361,37 @@ OSC_PORT = 9002
 TCP_PORT = 10003
 CONFIG_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "checkbox_states_tobii.json")
 
+def compute_smoothing(jump_pixels, min_jump=5.0, max_jump=100.0, max_smoothing=0.8, curve_factor=2.0):
+    """
+    Computes smoothing factor (0.0 to max_smoothing) given a movement jump in pixels.
+    Small jumps (0 to min_jump pixels) receive maximum smoothing (max_smoothing).
+    As the jump size increases towards max_jump, smoothing decreases towards 0.0 with an exponential curve response.
+    """
+    if max_jump <= min_jump:
+        return 0.0
+
+    if jump_pixels <= min_jump:
+        return max(0.0, min(0.999, float(max_smoothing)))
+
+    if jump_pixels >= max_jump:
+        return 0.0
+
+    # norm_small_jump goes from 1.0 (at jump_pixels == min_jump) down to 0.0 (at jump_pixels == max_jump)
+    norm_small_jump = (max_jump - jump_pixels) / (max_jump - min_jump)
+    norm_small_jump = min(1.0, max(0.0, norm_small_jump))
+
+    if abs(curve_factor) < 1e-6:
+        factor = norm_small_jump
+    elif curve_factor > 0:
+        factor = math.pow(norm_small_jump, 1.0 + float(curve_factor))
+    else:
+        exponent = 1.0 + abs(float(curve_factor))
+        factor = 1.0 - math.pow(1.0 - norm_small_jump, exponent)
+
+    smoothing = factor * float(max_smoothing)
+    return max(0.0, min(0.999, smoothing))
+
+
 def get_screen_size():
     if sys.platform == "win32":
         try:
@@ -412,9 +443,29 @@ def move_cursor_to_gaze(gx, gy):
     if not state.move_mouse or math.isnan(gx) or math.isnan(gy):
         return False
     sw, sh = state.screen_size
-    px = max(0.0, min(1.0, float(gx))) * sw
-    py = max(0.0, min(1.0, float(gy))) * sh
-    return set_cursor_pos(px, py)
+    target_x = max(0.0, min(1.0, float(gx))) * sw
+    target_y = max(0.0, min(1.0, float(gy))) * sh
+
+    if state.curr_mouse_x is None or state.curr_mouse_y is None:
+        state.curr_mouse_x = target_x
+        state.curr_mouse_y = target_y
+    else:
+        dx = target_x - state.curr_mouse_x
+        dy = target_y - state.curr_mouse_y
+        dist = math.hypot(dx, dy)
+
+        smoothing = compute_smoothing(
+            dist,
+            min_jump=state.smooth_min_jump,
+            max_jump=state.smooth_max_jump,
+            max_smoothing=state.max_smoothing,
+            curve_factor=state.curve_factor
+        )
+        alpha = 1.0 - smoothing
+        state.curr_mouse_x += dx * alpha
+        state.curr_mouse_y += dy * alpha
+
+    return set_cursor_pos(state.curr_mouse_x, state.curr_mouse_y)
 
 class Feature:
     def __init__(self, name, address, enabled=True, is_complex=False, max_v=1.0):
@@ -433,6 +484,12 @@ class AppState:
         self.features = []
         self.config = self.load_config()
         self.move_mouse = self.config.get("move_mouse", True)
+        self.smooth_min_jump = float(self.config.get("smooth_min_jump", 5.0))
+        self.smooth_max_jump = float(self.config.get("smooth_max_jump", 100.0))
+        self.max_smoothing = float(self.config.get("max_smoothing", 0.8))
+        self.curve_factor = float(self.config.get("curve_factor", 2.0))
+        self.curr_mouse_x = None
+        self.curr_mouse_y = None
         self.screen_size = get_screen_size()
         self.setup_features()
         self.last_gaze_data = None
@@ -465,6 +522,10 @@ class AppState:
         for f in self.features:
             new_config[f.address] = f.enabled
         new_config["move_mouse"] = self.move_mouse
+        new_config["smooth_min_jump"] = self.smooth_min_jump
+        new_config["smooth_max_jump"] = self.smooth_max_jump
+        new_config["max_smoothing"] = self.max_smoothing
+        new_config["curve_factor"] = self.curve_factor
         self.config = new_config
         try:
             with open(CONFIG_FILE, 'w') as f:
@@ -715,7 +776,21 @@ def main():
         parser.add_argument('--port', type=int, default=OSC_PORT, help=f'OSC Destination Port (default: {OSC_PORT})')
         parser.add_argument('--tcp-port', type=int, default=TCP_PORT, help=f'TCP Server Listening Port (default: {TCP_PORT})')
         parser.add_argument('--no-elevate', action='store_true', help='Do not attempt to automatically elevate privileges to Administrator on Windows')
+        parser.add_argument('--smooth-min-jump', type=float, help='Minimum jump in pixels below which max smoothing applies (default: 5.0)')
+        parser.add_argument('--smooth-max-jump', type=float, help='Maximum jump in pixels at which smoothing becomes 0.0 (default: 100.0)')
+        parser.add_argument('--max-smoothing', type=float, help='Maximum smoothing factor [0.0, 1.0) applied to small movements (default: 0.8)')
+        parser.add_argument('--curve-factor', type=float, help='Exponential curve factor (> 0 for exponential response, default: 2.0)')
         args, _ = parser.parse_known_args()
+
+        if args.smooth_min_jump is not None:
+            state.smooth_min_jump = float(args.smooth_min_jump)
+        if args.smooth_max_jump is not None:
+            state.smooth_max_jump = float(args.smooth_max_jump)
+        if args.max_smoothing is not None:
+            state.max_smoothing = float(args.max_smoothing)
+        if args.curve_factor is not None:
+            state.curve_factor = float(args.curve_factor)
+        state.save_config()
 
         if not args.no_elevate:
             elevate_privileges()
