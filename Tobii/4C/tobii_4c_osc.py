@@ -8,6 +8,8 @@ import traceback
 import json
 import math
 import argparse
+import socket
+import threading
 
 # Dependency checks for OpenCV and Python-OSC
 try:
@@ -356,7 +358,51 @@ def minimize_gui_window(win_name):
 # --- Configuration ---
 OSC_IP = "127.0.0.1"
 OSC_PORT = 9002
+TCP_PORT = 9003
 CONFIG_FILE = "checkbox_states_tobii.json"
+
+def start_tcp_server(host="127.0.0.1", port=TCP_PORT):
+    """Starts a background TCP server to receive control commands (such as mouse toggle)."""
+    def server_loop():
+        srv = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        srv.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        srv.settimeout(1.0)
+        try:
+            srv.bind((host, port))
+            srv.listen(5)
+            print(f"[TCP Server] Listening for commands on {host}:{port}")
+        except Exception as e:
+            print(f"[TCP Server] Could not start TCP server on {host}:{port}: {e}")
+            return
+
+        while state.running:
+            try:
+                conn, addr = srv.accept()
+            except socket.timeout:
+                continue
+            except Exception:
+                break
+
+            try:
+                with conn:
+                    conn.settimeout(2.0)
+                    data = conn.recv(1024)
+                    if data:
+                        cmd = data.decode('utf-8', errors='ignore').strip().lower()
+                        if 'toggle' in cmd or cmd == 'm':
+                            state.move_mouse = not state.move_mouse
+                            state.save_config()
+                            print(f"[TCP Server] Received toggle command from {addr}. Mouse control is now: {'ON' if state.move_mouse else 'OFF'}")
+                            conn.sendall(f"Mouse control: {'ON' if state.move_mouse else 'OFF'}\n".encode('utf-8'))
+            except Exception as e:
+                print(f"[TCP Server] Error handling connection: {e}")
+
+        srv.close()
+        print("[TCP Server] Stopped.")
+
+    t = threading.Thread(target=server_loop, daemon=True)
+    t.start()
+    return t
 
 def get_screen_size():
     if sys.platform == "win32":
@@ -618,8 +664,12 @@ def main():
         parser.add_argument('--no-mouse', action='store_true', help='Disable automatically moving mouse cursor based on gaze X and Y')
         parser.add_argument('--ip', type=str, default=OSC_IP, help=f'OSC Destination IP (default: {OSC_IP})')
         parser.add_argument('--port', type=int, default=OSC_PORT, help=f'OSC Destination Port (default: {OSC_PORT})')
+        parser.add_argument('--tcp-port', type=int, default=TCP_PORT, help=f'TCP Server Port for mouse control commands (default: {TCP_PORT})')
+        parser.add_argument('--tcp-host', type=str, default='127.0.0.1', help='TCP Server IP address (default: 127.0.0.1)')
         parser.add_argument('--no-elevate', action='store_true', help='Do not attempt to automatically elevate privileges to Administrator on Windows')
         args, _ = parser.parse_known_args()
+
+        start_tcp_server(args.tcp_host, args.tcp_port)
 
         if not args.no_elevate:
             elevate_privileges()

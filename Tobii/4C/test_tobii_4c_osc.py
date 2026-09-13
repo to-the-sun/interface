@@ -1,6 +1,8 @@
 import os
 import sys
 import math
+import time
+import socket
 import unittest
 from unittest.mock import MagicMock, patch
 import ctypes
@@ -135,6 +137,24 @@ class TestTobii4COsc(unittest.TestCase):
                 tobii_4c_osc.minimize_gui_window('Tobii 4C OSC (Stream Engine)')
                 mock_user32.FindWindowW.assert_called_with(None, 'Tobii 4C OSC (Stream Engine)')
                 mock_user32.ShowWindow.assert_called_with(67890, 6)
+
+    def test_tcp_server_toggle_mouse(self):
+        tobii_4c_osc.state.move_mouse = True
+        tobii_4c_osc.state.running = True
+
+        test_port = 9999
+        tobii_4c_osc.start_tcp_server(host="127.0.0.1", port=test_port)
+        time.sleep(0.1)
+
+        try:
+            with socket.create_connection(("127.0.0.1", test_port), timeout=2.0) as s:
+                s.sendall(b"toggle\n")
+                resp = s.recv(1024)
+                self.assertIn(b"Mouse control:", resp)
+
+            self.assertFalse(tobii_4c_osc.state.move_mouse)
+        finally:
+            tobii_4c_osc.state.running = False
 
 if __name__ == '__main__':
     unittest.main()
