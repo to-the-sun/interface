@@ -20,6 +20,8 @@ class TestTobii4COsc(unittest.TestCase):
         for f in tobii_4c_osc.state.features:
             f.current_val = 0.0
             f.enabled = True
+        tobii_4c_osc.state.move_mouse = True
+        tobii_4c_osc.state.mouse_ui_rect = [10, 43, 172, 55]
 
     def test_structures(self):
         gp = tobii_4c_osc.tobii_gaze_point_t()
@@ -120,6 +122,34 @@ class TestTobii4COsc(unittest.TestCase):
             mock_shell32.IsUserAnAdmin.return_value = 0
             with patch.dict('sys.modules', {'ctypes': MagicMock(windll=MagicMock(shell32=mock_shell32))}):
                 self.assertFalse(tobii_4c_osc.is_admin())
+
+    def test_on_mouse_toggle_mouse_control(self):
+        tobii_4c_osc.state.move_mouse = True
+        tobii_4c_osc.on_mouse(tobii_4c_osc.cv2.EVENT_LBUTTONDOWN, 15, 45, None, None)
+        self.assertFalse(tobii_4c_osc.state.move_mouse)
+
+        tobii_4c_osc.on_mouse(tobii_4c_osc.cv2.EVENT_LBUTTONDOWN, 15, 45, None, None)
+        self.assertTrue(tobii_4c_osc.state.move_mouse)
+
+    def test_handle_tcp_command(self):
+        # Test OFF command
+        resp = tobii_4c_osc.handle_tcp_command("off\n")
+        self.assertFalse(tobii_4c_osc.state.move_mouse)
+        self.assertIn("OFF", resp)
+
+        # Test ON command
+        resp = tobii_4c_osc.handle_tcp_command("on\n")
+        self.assertTrue(tobii_4c_osc.state.move_mouse)
+        self.assertIn("ON", resp)
+
+        # Test TOGGLE command
+        resp = tobii_4c_osc.handle_tcp_command("toggle\n")
+        self.assertFalse(tobii_4c_osc.state.move_mouse)
+        self.assertIn("OFF", resp)
+
+        # Test STATUS command
+        resp = tobii_4c_osc.handle_tcp_command("status\n")
+        self.assertIn("OFF", resp)
 
     def test_window_minimization(self):
         with patch('sys.platform', 'win32'):
