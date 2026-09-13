@@ -8,6 +8,8 @@ import traceback
 import json
 import math
 import argparse
+import socket
+import threading
 
 # Dependency checks for OpenCV and Python-OSC
 try:
@@ -356,6 +358,7 @@ def minimize_gui_window(win_name):
 # --- Configuration ---
 OSC_IP = "127.0.0.1"
 OSC_PORT = 9002
+TCP_PORT = 9003
 CONFIG_FILE = "checkbox_states_tobii.json"
 
 def get_screen_size():
@@ -443,6 +446,10 @@ class AppState:
         self.c_gaze_point_cb = None
         self.c_head_pose_cb = None
         self.c_url_cb = None
+        self.mouse_ui_rect = None
+        self.tcp_port = TCP_PORT
+        self.tcp_thread = None
+        self.tcp_server_socket = None
 
     def load_config(self):
         if os.path.exists(CONFIG_FILE):
@@ -496,11 +503,99 @@ state = AppState()
 
 def on_mouse(event, x, y, flags, param):
     if event == cv2.EVENT_LBUTTONDOWN:
+        if state.mouse_ui_rect and state.mouse_ui_rect[0] <= x <= state.mouse_ui_rect[2] and state.mouse_ui_rect[1] <= y <= state.mouse_ui_rect[3]:
+            state.move_mouse = not state.move_mouse
+            state.save_config()
+            print(f"[Mouse Control] Toggled mouse control via UI: {'ON' if state.move_mouse else 'OFF'}")
+            return
         for f in state.features:
             if f.ui_rect and f.ui_rect[0] <= x <= f.ui_rect[2] and f.ui_rect[1] <= y <= f.ui_rect[3]:
                 f.enabled = not f.enabled
                 state.save_config()
                 break
+
+def handle_tcp_command(cmd_str):
+    cmd = cmd_str.strip().lower()
+    if cmd in ("on", "1", "true", "enable", "enabled"):
+        state.move_mouse = True
+        state.save_config()
+        print("[TCP] Mouse control turned ON")
+        return "Mouse control: ON\n"
+    elif cmd in ("off", "0", "false", "disable", "disabled"):
+        state.move_mouse = False
+        state.save_config()
+        print("[TCP] Mouse control turned OFF")
+        return "Mouse control: OFF\n"
+    elif cmd in ("toggle", "m", "switch"):
+        state.move_mouse = not state.move_mouse
+        state.save_config()
+        print(f"[TCP] Toggled mouse control: {'ON' if state.move_mouse else 'OFF'}")
+        return f"Mouse control: {'ON' if state.move_mouse else 'OFF'}\n"
+    elif cmd in ("status", "get"):
+        return f"Mouse control: {'ON' if state.move_mouse else 'OFF'}\n"
+    elif cmd:
+        return f"Unknown command: '{cmd}'. Use 'on', 'off', 'toggle', or 'status'.\n"
+    return ""
+
+def start_tcp_server(host, port):
+    def tcp_worker():
+        server_sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        server_sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        try:
+            server_sock.bind((host, port))
+            server_sock.listen(5)
+            server_sock.settimeout(1.0)
+            state.tcp_server_socket = server_sock
+            print(f"[TCP Server] Listening for commands on {host}:{port}")
+        except Exception as e:
+            print(f"[TCP Server] Failed to bind TCP server on {host}:{port}: {e}")
+            return
+
+        while state.running:
+            try:
+                client_sock, addr = server_sock.accept()
+            except socket.timeout:
+                continue
+            except Exception:
+                break
+
+            def client_handler(cs):
+                with cs:
+                    cs.settimeout(5.0)
+                    try:
+                        buf = b""
+                        while state.running:
+                            chunk = cs.recv(1024)
+                            if not chunk:
+                                break
+                            buf += chunk
+                            if b"\n" in buf or b"\r" in buf:
+                                lines = buf.replace(b"\r\n", b"\n").replace(b"\r", b"\n").split(b"\n")
+                                for line in lines[:-1]:
+                                    cmd_text = line.decode('utf-8', errors='ignore')
+                                    resp = handle_tcp_command(cmd_text)
+                                    if resp:
+                                        cs.sendall(resp.encode('utf-8'))
+                                buf = lines[-1]
+                        if buf:
+                            cmd_text = buf.decode('utf-8', errors='ignore')
+                            resp = handle_tcp_command(cmd_text)
+                            if resp:
+                                cs.sendall(resp.encode('utf-8'))
+                    except Exception:
+                        pass
+
+            t = threading.Thread(target=client_handler, args=(client_sock,), daemon=True)
+            t.start()
+
+        try:
+            server_sock.close()
+        except Exception:
+            pass
+
+    t = threading.Thread(target=tcp_worker, daemon=True)
+    t.start()
+    state.tcp_thread = t
 
 def on_gaze_point(gaze_point_ptr, user_data):
     if not gaze_point_ptr:
@@ -618,6 +713,7 @@ def main():
         parser.add_argument('--no-mouse', action='store_true', help='Disable automatically moving mouse cursor based on gaze X and Y')
         parser.add_argument('--ip', type=str, default=OSC_IP, help=f'OSC Destination IP (default: {OSC_IP})')
         parser.add_argument('--port', type=int, default=OSC_PORT, help=f'OSC Destination Port (default: {OSC_PORT})')
+        parser.add_argument('--tcp-port', type=int, default=TCP_PORT, help=f'TCP Server Listening Port (default: {TCP_PORT})')
         parser.add_argument('--no-elevate', action='store_true', help='Do not attempt to automatically elevate privileges to Administrator on Windows')
         args, _ = parser.parse_known_args()
 
@@ -630,6 +726,9 @@ def main():
             state.move_mouse = False
         if args.ip or args.port:
             state.client = udp_client.SimpleUDPClient(args.ip, args.port)
+        state.tcp_port = args.tcp_port
+
+        start_tcp_server("127.0.0.1", state.tcp_port)
 
         print("Loading Tobii Stream Engine library...")
         raw_lib = load_tobii_stream_engine()
@@ -764,21 +863,31 @@ def main():
         w, h = 640, 480
 
         print(f"Streaming data to {args.ip}:{args.port}")
+        print(f"TCP control server listening on 127.0.0.1:{state.tcp_port}")
         if state.move_mouse:
-            print(f"[Mouse Control] Mouse control enabled (SetCursorPos/pynput). Resolution: {state.screen_size[0]}x{state.screen_size[1]}")
+            print(f"[Mouse Control] Mouse control enabled (SetCursorPos/pynput). Resolution: {state.screen_size[0]}x{screen_size[1] if 'screen_size' in locals() else state.screen_size[1]}")
         else:
             print("[Mouse Control] Mouse control disabled.")
-        print("Press 'm' to toggle mouse control, 'n' to cycle through trackers, ESC to exit.")
+        print("Click the toggle box in the UI or send TCP commands ('on'/'off'/'toggle') to control mouse movement.")
+        print("Press 'n' to cycle through trackers, ESC to exit.")
 
         while state.running:
             if api.tobii_device_process_callbacks and state.device_handle:
                 api.tobii_device_process_callbacks(state.device_handle)
 
             tracker_info = f"Tobii Stream Engine: {state.current_device_url or 'Unknown'}"
-            mouse_status = f"Mouse Control: {'ON' if state.move_mouse else 'OFF'} ('m' toggle)"
+            mouse_status = f"Mouse control: {'ON' if state.move_mouse else 'OFF'}"
             display_img = np.zeros((h, w, 3), dtype=np.uint8)
             cv2.putText(display_img, tracker_info[:45], (10, 30), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 255, 0), 2)
-            cv2.putText(display_img, mouse_status, (10, 55), cv2.FONT_HERSHEY_SIMPLEX, 0.45, (0, 255, 0) if state.move_mouse else (0, 0, 255), 1)
+
+            # Manual Toggle Button right before "Mouse control: On/Off"
+            btn_x, btn_y, btn_size = 10, 43, 12
+            cv2.rectangle(display_img, (btn_x, btn_y), (btn_x + btn_size, btn_y + btn_size), (255, 255, 255), 1)
+            if state.move_mouse:
+                cv2.rectangle(display_img, (btn_x + 2, btn_y + 2), (btn_x + btn_size - 2, btn_y + btn_size - 2), (0, 255, 0), -1)
+            state.mouse_ui_rect = [btn_x, btn_y, btn_x + btn_size + 150, btn_y + btn_size]
+
+            cv2.putText(display_img, mouse_status, (btn_x + btn_size + 8, 54), cv2.FONT_HERSHEY_SIMPLEX, 0.45, (0, 255, 0) if state.move_mouse else (0, 0, 255), 1)
 
             # Draw Gaze Visualization
             if state.last_gaze_data:
@@ -826,15 +935,13 @@ def main():
             cv2.imshow(win_name, np.hstack((display_img, sidebar)))
             key = cv2.waitKey(5) & 0xFF
             if key == 27: break  # ESC
-            if key == ord('m'):
-                state.move_mouse = not state.move_mouse
-                state.save_config()
-                print(f"[Mouse Control] Toggled mouse control: {'ON' if state.move_mouse else 'OFF'}")
             if key == ord('n') and len(state.device_urls) > 1:  # Cycle trackers
                 state.tracker_index = (state.tracker_index + 1) % len(state.device_urls)
                 switch_tracker(state.tracker_index)
 
             time.sleep(0.001)
+
+        state.running = False
 
         # Cleanup device and API
         if state.device_handle:
