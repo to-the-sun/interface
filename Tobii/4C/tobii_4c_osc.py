@@ -298,9 +298,64 @@ class TobiiStreamEngineAPI:
         return f"Error code {err_code}"
 
 
+# Administrator privileges and window minimization helpers
+def is_admin():
+    """Checks if the script is running with administrator privileges."""
+    if sys.platform != 'win32':
+        return True
+    try:
+        import ctypes
+        return ctypes.windll.shell32.IsUserAnAdmin() != 0
+    except Exception:
+        return False
+
+def elevate_privileges():
+    """Restarts the script with administrator privileges if on Windows and not already admin."""
+    if sys.platform == 'win32' and not is_admin():
+        import ctypes
+        print("[*] Detected non-administrator execution.")
+        print("[*] Administrative privileges are required to move mouse inside restricted windows like Task Manager.")
+        print("[*] Elevating privileges via Windows UAC Prompt...")
+        time.sleep(1.0)
+
+        script = os.path.abspath(sys.argv[0])
+        params = " ".join([f'"{arg}"' for arg in sys.argv[1:]])
+
+        try:
+            ret = ctypes.windll.shell32.ShellExecuteW(None, "runas", sys.executable, f'"{script}" {params}', None, 1)
+            if int(ret) > 32:
+                sys.exit(0)
+            else:
+                print(f"[!] UAC Elevation failed with return code {ret}.")
+        except Exception as e:
+            print(f"[!] UAC Elevation failed: {e}")
+            print("[*] Continuing without administrator privileges...")
+
+def minimize_console_window():
+    """Minimizes the Python console window on Windows."""
+    if sys.platform == "win32":
+        try:
+            import ctypes
+            console_hwnd = ctypes.windll.kernel32.GetConsoleWindow()
+            if console_hwnd:
+                ctypes.windll.user32.ShowWindow(console_hwnd, 6)  # 6 = SW_MINIMIZE
+        except Exception as e:
+            print(f"[*] Failed to minimize console window: {e}")
+
+def minimize_gui_window(win_name):
+    """Minimizes an OpenCV GUI window by window title on Windows."""
+    if sys.platform == "win32":
+        try:
+            import ctypes
+            gui_hwnd = ctypes.windll.user32.FindWindowW(None, win_name)
+            if gui_hwnd:
+                ctypes.windll.user32.ShowWindow(gui_hwnd, 6)  # 6 = SW_MINIMIZE
+        except Exception as e:
+            print(f"[*] Failed to minimize GUI window '{win_name}': {e}")
+
 # --- Configuration ---
 OSC_IP = "127.0.0.1"
-OSC_PORT = 9001
+OSC_PORT = 9002
 CONFIG_FILE = "checkbox_states_tobii.json"
 
 def get_screen_size():
@@ -563,7 +618,13 @@ def main():
         parser.add_argument('--no-mouse', action='store_true', help='Disable automatically moving mouse cursor based on gaze X and Y')
         parser.add_argument('--ip', type=str, default=OSC_IP, help=f'OSC Destination IP (default: {OSC_IP})')
         parser.add_argument('--port', type=int, default=OSC_PORT, help=f'OSC Destination Port (default: {OSC_PORT})')
+        parser.add_argument('--no-elevate', action='store_true', help='Do not attempt to automatically elevate privileges to Administrator on Windows')
         args, _ = parser.parse_known_args()
+
+        if not args.no_elevate:
+            elevate_privileges()
+
+        minimize_console_window()
 
         if args.no_mouse:
             state.move_mouse = False
@@ -693,6 +754,12 @@ def main():
         cv2.namedWindow(win_name, cv2.WINDOW_NORMAL)
         cv2.resizeWindow(win_name, 1420, 480)
         cv2.setMouseCallback(win_name, on_mouse)
+
+        # Draw initial frame and minimize GUI window immediately
+        initial_img = np.zeros((480, 1420, 3), dtype=np.uint8)
+        cv2.imshow(win_name, initial_img)
+        cv2.waitKey(1)
+        minimize_gui_window(win_name)
 
         w, h = 640, 480
 

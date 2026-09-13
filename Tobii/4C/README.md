@@ -21,7 +21,7 @@ Run the script from the directory:
 python tobii_4c_osc.py
 ```
 
-- **Port**: Streams to `127.0.0.1:9001` by default.
+- **Port**: Streams to `127.0.0.1:9002` by default.
 - **Mouse Control**: By default, automatically positions the screen mouse cursor based on normalized gaze X and Y coordinates. Pass `--no-mouse` to disable mouse cursor movement.
 - **Interactions**:
     - Use the checkboxes in the sidebar to toggle specific OSC addresses on or off.

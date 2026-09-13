@@ -102,5 +102,39 @@ class TestTobii4COsc(unittest.TestCase):
             lib = tobii_4c_osc.load_tobii_stream_engine()
             self.assertIsNone(lib)
 
+    def test_osc_port_default(self):
+        self.assertEqual(tobii_4c_osc.OSC_PORT, 9002)
+
+    def test_is_admin(self):
+        # Non-win32 should return True
+        with patch('sys.platform', 'linux'):
+            self.assertTrue(tobii_4c_osc.is_admin())
+
+        # win32 admin check test
+        with patch('sys.platform', 'win32'):
+            mock_shell32 = MagicMock()
+            mock_shell32.IsUserAnAdmin.return_value = 1
+            with patch.dict('sys.modules', {'ctypes': MagicMock(windll=MagicMock(shell32=mock_shell32))}):
+                self.assertTrue(tobii_4c_osc.is_admin())
+
+            mock_shell32.IsUserAnAdmin.return_value = 0
+            with patch.dict('sys.modules', {'ctypes': MagicMock(windll=MagicMock(shell32=mock_shell32))}):
+                self.assertFalse(tobii_4c_osc.is_admin())
+
+    def test_window_minimization(self):
+        with patch('sys.platform', 'win32'):
+            mock_user32 = MagicMock()
+            mock_kernel32 = MagicMock()
+            mock_kernel32.GetConsoleWindow.return_value = 12345
+            mock_user32.FindWindowW.return_value = 67890
+
+            with patch.dict('sys.modules', {'ctypes': MagicMock(windll=MagicMock(user32=mock_user32, kernel32=mock_kernel32))}):
+                tobii_4c_osc.minimize_console_window()
+                mock_user32.ShowWindow.assert_called_with(12345, 6)
+
+                tobii_4c_osc.minimize_gui_window('Tobii 4C OSC (Stream Engine)')
+                mock_user32.FindWindowW.assert_called_with(None, 'Tobii 4C OSC (Stream Engine)')
+                mock_user32.ShowWindow.assert_called_with(67890, 6)
+
 if __name__ == '__main__':
     unittest.main()
