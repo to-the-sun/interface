@@ -56,7 +56,7 @@ set "PIP_URL=https://bootstrap.pypa.io/get-pip.py"
 
 if not exist "%ENV_DIR%\python.exe" (
     echo Downloading 32-bit Python 3.10 embeddable runtime...
-    powershell -NoProfile -ExecutionPolicy Bypass -Command "[Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12; Invoke-WebRequest -Uri '%PY_URL%' -OutFile '%PY_ZIP%'"
+    powershell -NoProfile -ExecutionPolicy Bypass -Command "[Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12; (New-Object System.Net.WebClient).DownloadFile($env:PY_URL, $env:PY_ZIP)"
     if errorlevel 1 (
         echo [ERROR] Failed to download 32-bit Python package.
         pause
@@ -64,18 +64,18 @@ if not exist "%ENV_DIR%\python.exe" (
     )
 
     echo Extracting 32-bit Python package...
-    powershell -NoProfile -ExecutionPolicy Bypass -Command "Expand-Archive -LiteralPath '%PY_ZIP%' -DestinationPath '%ENV_DIR%' -Force"
+    powershell -NoProfile -ExecutionPolicy Bypass -Command "Expand-Archive -LiteralPath $env:PY_ZIP -DestinationPath $env:ENV_DIR -Force"
     del "%PY_ZIP%" 2>nul
 
     rem Uncomment 'import site' in python310._pth to enable site-packages / pip
     if exist "%ENV_DIR%\python310._pth" (
-        powershell -NoProfile -ExecutionPolicy Bypass -Command "(Get-Content -LiteralPath '%ENV_DIR%\python310._pth') -replace '#import site', 'import site' | Set-Content -LiteralPath '%ENV_DIR%\python310._pth'"
+        powershell -NoProfile -ExecutionPolicy Bypass -Command "$p = Join-Path $env:ENV_DIR 'python310._pth'; (Get-Content -LiteralPath $p) -replace '#import site', 'import site' | Set-Content -LiteralPath $p"
     )
 )
 
 if not exist "%ENV_DIR%\Scripts\pip.exe" (
     echo Downloading get-pip.py...
-    powershell -NoProfile -ExecutionPolicy Bypass -Command "[Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12; Invoke-WebRequest -Uri '%PIP_URL%' -OutFile '%GET_PIP%'"
+    powershell -NoProfile -ExecutionPolicy Bypass -Command "[Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12; (New-Object System.Net.WebClient).DownloadFile($env:PIP_URL, $env:GET_PIP)"
 
     echo Installing pip into 32-bit Python environment...
     "%ENV_DIR%\python.exe" "%GET_PIP%" --no-warn-script-location
