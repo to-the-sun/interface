@@ -64,7 +64,7 @@ if not exist "%ENV_DIR%\python.exe" (
     )
 
     echo Extracting 32-bit Python package...
-    powershell -NoProfile -ExecutionPolicy Bypass -Command "Expand-Archive -LiteralPath $env:PY_ZIP -DestinationPath $env:ENV_DIR -Force"
+    powershell -NoProfile -ExecutionPolicy Bypass -Command "Add-Type -AssemblyName System.IO.Compression.FileSystem; $z = [System.IO.Compression.ZipFile]::OpenRead($env:PY_ZIP); try { foreach ($e in $z.Entries) { $t = [System.IO.Path]::Combine($env:ENV_DIR, $e.FullName); $d = [System.IO.Path]::GetDirectoryName($t); if ($d -and -not [System.IO.Directory]::Exists($d)) { [System.IO.Directory]::CreateDirectory($d) | Out-Null }; if (-not $e.FullName.EndsWith('/')) { [System.IO.Compression.ZipFileExtensions]::ExtractToFile($e, $t, $true) } } } finally { $z.Dispose() }"
     del "%PY_ZIP%" 2>nul
 
     rem Uncomment 'import site' in python310._pth to enable site-packages / pip
