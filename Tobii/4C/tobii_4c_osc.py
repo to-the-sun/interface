@@ -359,7 +359,7 @@ def minimize_gui_window(win_name):
 OSC_IP = "127.0.0.1"
 OSC_PORT = 9002
 TCP_PORT = 9003
-CONFIG_FILE = "checkbox_states_tobii.json"
+CONFIG_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "checkbox_states_tobii.json")
 
 def get_screen_size():
     if sys.platform == "win32":
