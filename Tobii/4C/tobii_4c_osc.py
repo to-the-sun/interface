@@ -30,6 +30,11 @@ class TobiiValidity:
     TOBII_VALIDITY_INVALID = 0
     TOBII_VALIDITY_VALID = 1
 
+class TobiiFieldOfUse:
+    TOBII_FIELD_OF_USE_DEFAULT = 0
+    TOBII_FIELD_OF_USE_INTERACTIVE = 1
+    TOBII_FIELD_OF_USE_ANALYTICAL = 2
+
 class tobii_gaze_point_t(Structure):
     _fields_ = [
         ("timestamp_us", c_int64),
@@ -145,6 +150,12 @@ class TobiiStreamEngineAPI:
         if not self.lib:
             return
 
+        # tobii_error_message
+        self.tobii_error_message = getattr(self.lib, "tobii_error_message", None)
+        if self.tobii_error_message:
+            self.tobii_error_message.argtypes = [c_int]
+            self.tobii_error_message.restype = c_char_p
+
         # tobii_api_create
         self.tobii_api_create = getattr(self.lib, "tobii_api_create", None)
         if self.tobii_api_create:
@@ -163,10 +174,10 @@ class TobiiStreamEngineAPI:
             self.tobii_enumerate_local_device_urls.argtypes = [c_void_p, tobii_url_receiver_t, c_void_p]
             self.tobii_enumerate_local_device_urls.restype = c_int
 
-        # tobii_device_create
+        # tobii_device_create (takes field_of_use enum as 3rd parameter)
         self.tobii_device_create = getattr(self.lib, "tobii_device_create", None)
         if self.tobii_device_create:
-            self.tobii_device_create.argtypes = [c_void_p, c_char_p, c_void_p, POINTER(c_void_p)]
+            self.tobii_device_create.argtypes = [c_void_p, c_char_p, c_int, POINTER(c_void_p)]
             self.tobii_device_create.restype = c_int
 
         # tobii_device_destroy
@@ -216,6 +227,16 @@ class TobiiStreamEngineAPI:
         if self.tobii_head_pose_unsubscribe:
             self.tobii_head_pose_unsubscribe.argtypes = [c_void_p]
             self.tobii_head_pose_unsubscribe.restype = c_int
+
+    def get_error_str(self, err_code):
+        if self.tobii_error_message:
+            try:
+                msg = self.tobii_error_message(err_code)
+                if msg:
+                    return msg.decode('utf-8')
+            except Exception:
+                pass
+        return f"Error code {err_code}"
 
 
 # --- Configuration ---
@@ -438,7 +459,7 @@ def main():
         api_ptr = c_void_p()
         res = api.tobii_api_create(ctypes.byref(api_ptr), None, None)
         if res != TOBII_ERROR_NO_ERROR or not api_ptr:
-            print(f"ERROR: tobii_api_create failed with status code {res}.")
+            print(f"ERROR: tobii_api_create failed with status: {api.get_error_str(res)} ({res}).")
             if sys.platform == "win32":
                 input("\nPress Enter to exit...")
             return
@@ -491,9 +512,15 @@ def main():
             url = state.device_urls[idx]
             state.current_device_url = url
             dev_ptr = c_void_p()
-            ret = api.tobii_device_create(state.api_handle, url.encode('utf-8'), None, ctypes.byref(dev_ptr))
+
+            # Try interactive field of use first, fallback to default field of use
+            ret = api.tobii_device_create(state.api_handle, url.encode('utf-8'), TobiiFieldOfUse.TOBII_FIELD_OF_USE_INTERACTIVE, ctypes.byref(dev_ptr))
             if ret != TOBII_ERROR_NO_ERROR or not dev_ptr:
-                print(f"Failed to create Tobii device for URL '{url}' (error: {ret})")
+                ret = api.tobii_device_create(state.api_handle, url.encode('utf-8'), TobiiFieldOfUse.TOBII_FIELD_OF_USE_DEFAULT, ctypes.byref(dev_ptr))
+
+            if ret != TOBII_ERROR_NO_ERROR or not dev_ptr:
+                err_desc = api.get_error_str(ret)
+                print(f"Failed to create Tobii device for URL '{url}' ({err_desc}, code: {ret})")
                 return False
 
             state.device_handle = dev_ptr
