@@ -62,41 +62,46 @@ def save_config(config):
 def compute_smoothing(jump_pixels, min_jump, max_jump, max_smoothing, curve_factor):
     """
     Computes smoothing amount (0.0 to max_smoothing) given the jump in pixels.
+    Small jumps (0 to min_jump pixels) receive maximum smoothing (max_smoothing).
+    As the jump size increases towards max_jump, smoothing decreases to 0.0.
 
     Parameters:
     - jump_pixels: distance in pixels between mouse frames (float)
-    - min_jump: adjustable minimum jump in pixels before smoothing kicks in (float)
-    - max_jump: jump in pixels at which maximum smoothing is reached (float)
-    - max_smoothing: maximum smoothing factor [0.0, 1.0) (float)
+    - min_jump: adjustable minimum jump threshold in pixels below which maximum smoothing is applied (float)
+    - max_jump: jump in pixels at which smoothing reaches 0.0 (float)
+    - max_smoothing: maximum smoothing factor [0.0, 1.0) applied to small movements (float)
     - curve_factor: factor varying curve type:
-        - curve_factor < 0: Logarithmic behavior (fast ramp up, levels off)
+        - curve_factor < 0: Logarithmic behavior
         - curve_factor == 0: Linear behavior
-        - curve_factor > 0: Exponential behavior (slow ramp up, steep rise)
+        - curve_factor > 0: Exponential behavior
         Magnitude controls curvature strength (e.g., -5.0 to +5.0).
     """
     if jump_pixels <= min_jump:
-        return 0.0
+        return max(0.0, min(0.999, max_smoothing))
 
     if max_jump <= min_jump:
-        norm = 1.0
-    else:
-        norm = min(1.0, max(0.0, (jump_pixels - min_jump) / (max_jump - min_jump)))
+        return 0.0
+
+    if jump_pixels >= max_jump:
+        return 0.0
+
+    # norm_small_jump goes from 1.0 (at jump_pixels == min_jump) down to 0.0 (at jump_pixels == max_jump)
+    norm_small_jump = (max_jump - jump_pixels) / (max_jump - min_jump)
+    norm_small_jump = min(1.0, max(0.0, norm_small_jump))
 
     # Apply curve factor transformation
-    # norm is in [0.0, 1.0]
     if abs(curve_factor) < 1e-6:
         # Linear
-        factor = norm
+        factor = norm_small_jump
     elif curve_factor > 0:
-        # Exponential curve: norm^(1 + curve_factor)
-        factor = math.pow(norm, 1.0 + curve_factor)
+        # Exponential curve
+        factor = math.pow(norm_small_jump, 1.0 + curve_factor)
     else:
-        # Logarithmic curve: 1 - (1 - norm)^(1 + |curve_factor|)
+        # Logarithmic curve
         exponent = 1.0 + abs(curve_factor)
-        factor = 1.0 - math.pow(1.0 - norm, exponent)
+        factor = 1.0 - math.pow(1.0 - norm_small_jump, exponent)
 
     smoothing = factor * max_smoothing
-    # Clamp smoothing to [0.0, 0.999]
     return max(0.0, min(0.999, smoothing))
 
 
@@ -452,13 +457,13 @@ class MouseSmootherGUI:
         self.canvas.create_line(pad_left, pad_top, pad_left, pad_top + graph_h, fill="#555555", width=2)
         self.canvas.create_line(pad_left, pad_top + graph_h, pad_left + graph_w, pad_top + graph_h, fill="#555555", width=2)
 
-        # X-Axis Ticks & Labels (Pixels Jump)
+        # X-Axis Ticks & Labels (Pixels Jump reversed: max_j on left, 0px on right)
         steps = 5
         for i in range(steps + 1):
-            x_val = (max_j / steps) * i
+            x_val = max_j - (max_j / steps) * i
             x_pos = pad_left + (i / steps) * graph_w
             self.canvas.create_line(x_pos, pad_top + graph_h, x_pos, pad_top + graph_h + 5, fill="#888888")
-            self.canvas.create_text(x_pos, pad_top + graph_h + 18, text=f"{int(x_val)}px", fill="#aaaaaa", font=("Segoe UI", 8))
+            self.canvas.create_text(x_pos, pad_top + graph_h + 18, text=f"{int(round(x_val))}px", fill="#aaaaaa", font=("Segoe UI", 8))
 
         # Y-Axis Ticks & Labels (Smoothing Amount)
         for i in range(steps + 1):
@@ -477,10 +482,10 @@ class MouseSmootherGUI:
             text="Smoothing", fill="#ffffff", font=("Segoe UI", 9, "bold"), angle=90
         )
 
-        # Draw Min Jump Threshold Marker Line
+        # Draw Min Jump Threshold Marker Line (Reversed axis: position is at (max_j - min_j))
         if min_j > 0:
-            min_x_pos = pad_left + (min_j / max_j) * graph_w
-            if min_x_pos <= pad_left + graph_w:
+            min_x_pos = pad_left + ((max_j - min_j) / max_j) * graph_w
+            if pad_left <= min_x_pos <= pad_left + graph_w:
                 self.canvas.create_line(min_x_pos, pad_top, min_x_pos, pad_top + graph_h, fill="#ffaa00", dash=(3, 3))
                 self.canvas.create_text(min_x_pos, pad_top - 10, text=f"Min Threshold ({min_j:.1f}px)", fill="#ffaa00", font=("Segoe UI", 8))
 
@@ -489,14 +494,15 @@ class MouseSmootherGUI:
         self.canvas.create_line(pad_left, max_s_y_pos, pad_left + graph_w, max_s_y_pos, fill="#00aaff", dash=(2, 4))
         self.canvas.create_text(pad_left + graph_w - 40, max_s_y_pos - 8, text=f"Max Y ({max_s:.2f})", fill="#00aaff", font=("Segoe UI", 8))
 
-        # Plot Curve
+        # Plot Curve (Reversed X axis: left is max_j, right is 0px)
         points = []
         num_samples = 150
         for step in range(num_samples + 1):
-            jp = (max_j / num_samples) * step
+            # jp decreases from max_j down to 0.0 as step goes from 0 to num_samples
+            jp = max_j - (max_j / num_samples) * step
             sm = compute_smoothing(jp, min_j, max_j, max_s, c_fac)
 
-            px = pad_left + (jp / max_j) * graph_w
+            px = pad_left + (step / num_samples) * graph_w
             py = pad_top + graph_h - sm * graph_h
             points.append((px, py))
 

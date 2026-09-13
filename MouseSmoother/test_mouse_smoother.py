@@ -15,15 +15,15 @@ from MouseSmoother.mouse_smoother import (
 class TestMouseSmoother(unittest.TestCase):
 
     def test_compute_smoothing_threshold(self):
-        # Jump below or equal to min_jump should result in 0 smoothing
+        # Small jumps <= min_jump should receive max_smoothing
         min_jump = 10.0
         max_jump = 100.0
         max_smoothing = 0.8
         curve_factor = 0.0
 
-        self.assertEqual(compute_smoothing(0.0, min_jump, max_jump, max_smoothing, curve_factor), 0.0)
-        self.assertEqual(compute_smoothing(5.0, min_jump, max_jump, max_smoothing, curve_factor), 0.0)
-        self.assertEqual(compute_smoothing(10.0, min_jump, max_jump, max_smoothing, curve_factor), 0.0)
+        self.assertEqual(compute_smoothing(0.0, min_jump, max_jump, max_smoothing, curve_factor), 0.8)
+        self.assertEqual(compute_smoothing(5.0, min_jump, max_jump, max_smoothing, curve_factor), 0.8)
+        self.assertEqual(compute_smoothing(10.0, min_jump, max_jump, max_smoothing, curve_factor), 0.8)
 
     def test_compute_smoothing_linear(self):
         min_jump = 10.0
@@ -31,25 +31,25 @@ class TestMouseSmoother(unittest.TestCase):
         max_smoothing = 0.8
         curve_factor = 0.0
 
-        # At mid point jump=60 (norm = 0.5), smoothing should be 0.5 * 0.8 = 0.4
+        # At mid point jump=60 (norm_small_jump = 0.5), smoothing should be 0.5 * 0.8 = 0.4
         sm_mid = compute_smoothing(60.0, min_jump, max_jump, max_smoothing, curve_factor)
         self.assertAlmostEqual(sm_mid, 0.4, places=5)
 
-        # At max point jump=110 (norm = 1.0), smoothing should be max_smoothing = 0.8
+        # At max point jump=110 (norm_small_jump = 0.0), smoothing should be 0.0
         sm_max = compute_smoothing(110.0, min_jump, max_jump, max_smoothing, curve_factor)
-        self.assertAlmostEqual(sm_max, 0.8, places=5)
+        self.assertAlmostEqual(sm_max, 0.0, places=5)
 
-        # Beyond max point jump=200, smoothing should clamp at max_smoothing = 0.8
+        # Beyond max point jump=200, smoothing should clamp at 0.0
         sm_over = compute_smoothing(200.0, min_jump, max_jump, max_smoothing, curve_factor)
-        self.assertAlmostEqual(sm_over, 0.8, places=5)
+        self.assertAlmostEqual(sm_over, 0.0, places=5)
 
     def test_compute_smoothing_exponential(self):
         min_jump = 0.0
         max_jump = 100.0
         max_smoothing = 0.8
-        curve_factor = 2.0  # Exponential: norm^(1+2) = norm^3
+        curve_factor = 2.0  # Exponential: norm^3
 
-        # At norm = 0.5 (jump = 50), factor = 0.5^3 = 0.125
+        # At norm_small_jump = 0.5 (jump = 50), factor = 0.5^3 = 0.125
         # Expected smoothing = 0.125 * 0.8 = 0.1
         sm = compute_smoothing(50.0, min_jump, max_jump, max_smoothing, curve_factor)
         self.assertAlmostEqual(sm, 0.1, places=5)
@@ -58,9 +58,9 @@ class TestMouseSmoother(unittest.TestCase):
         min_jump = 0.0
         max_jump = 100.0
         max_smoothing = 0.8
-        curve_factor = -2.0  # Logarithmic: 1 - (1 - norm)^(1+2) = 1 - (1 - norm)^3
+        curve_factor = -2.0  # Logarithmic: 1 - (1 - norm)^3
 
-        # At norm = 0.5 (jump = 50), factor = 1 - 0.5^3 = 0.875
+        # At norm_small_jump = 0.5 (jump = 50), factor = 1 - 0.5^3 = 0.875
         # Expected smoothing = 0.875 * 0.8 = 0.7
         sm = compute_smoothing(50.0, min_jump, max_jump, max_smoothing, curve_factor)
         self.assertAlmostEqual(sm, 0.7, places=5)
