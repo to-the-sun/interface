@@ -1,0 +1,97 @@
+@echo off
+title Tobii 4C OSC Streamer Launcher
+cd /d "%~dp0"
+
+set "ENV_DIR=%~dp0env_32"
+
+rem Check if local 32-bit environment already exists and is complete
+if exist "%ENV_DIR%\python.exe" (
+    echo Launching Tobii 4C OSC Streamer via local 32-bit Python environment...
+    "%ENV_DIR%\python.exe" "%~dp0tobii_4c_osc.py"
+    if %errorlevel% equ 0 goto :END
+)
+
+rem Try 32-bit Python via launcher first if installed on system
+where py >nul 2>nul
+if %errorlevel% neq 0 goto :CHECK_SYSTEM_PYTHON
+
+py -3-32 -c "import sys" >nul 2>&1
+if errorlevel 1 goto :CHECK_SYSTEM_PYTHON
+
+echo Found system Python 32-bit via launcher!
+echo Installing / verifying required dependencies...
+py -3-32 -m pip install -r requirements.txt
+echo.
+echo Launching Tobii 4C OSC Streamer with system 32-bit Python...
+py -3-32 "%~dp0tobii_4c_osc.py"
+if %errorlevel% equ 0 goto :END
+
+:CHECK_SYSTEM_PYTHON
+rem Check if standard system Python can load 32-bit DLL
+where python >nul 2>nul
+if %errorlevel% neq 0 goto :SETUP_LOCAL_ENV
+
+python -c "import ctypes; sys_bit=ctypes.sizeof(ctypes.c_void_p)*8; exit(0 if sys_bit==32 else 1)" >nul 2>&1
+if errorlevel 1 goto :SETUP_LOCAL_ENV
+
+echo System Python is 32-bit. Installing dependencies and launching...
+python -m pip install -r requirements.txt
+python "%~dp0tobii_4c_osc.py"
+if %errorlevel% equ 0 goto :END
+
+:SETUP_LOCAL_ENV
+echo.
+echo ========================================================================
+echo Notice: 32-bit Tobii Stream Engine DLL requires a 32-bit Python runtime.
+echo Creating local 32-bit Python environment in folder: env_32 ...
+echo ========================================================================
+echo.
+
+if not exist "%ENV_DIR%" mkdir "%ENV_DIR%"
+
+set "PY_ZIP=%ENV_DIR%\python-3.10.11-embed-win32.zip"
+set "GET_PIP=%ENV_DIR%\get-pip.py"
+set "PY_URL=https://www.python.org/ftp/python/3.10.11/python-3.10.11-embed-win32.zip"
+set "PIP_URL=https://bootstrap.pypa.io/get-pip.py"
+
+if not exist "%ENV_DIR%\python.exe" (
+    echo Downloading 32-bit Python 3.10 embeddable runtime...
+    powershell -NoProfile -ExecutionPolicy Bypass -Command "[Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12; (New-Object System.Net.WebClient).DownloadFile($env:PY_URL, $env:PY_ZIP)"
+    if errorlevel 1 (
+        echo [ERROR] Failed to download 32-bit Python package.
+        pause
+        exit /b 1
+    )
+
+    echo Extracting 32-bit Python package...
+    powershell -NoProfile -ExecutionPolicy Bypass -Command "Add-Type -AssemblyName System.IO.Compression.FileSystem; $z = [System.IO.Compression.ZipFile]::OpenRead($env:PY_ZIP); try { foreach ($e in $z.Entries) { $t = [System.IO.Path]::Combine($env:ENV_DIR, $e.FullName); $d = [System.IO.Path]::GetDirectoryName($t); if ($d -and -not [System.IO.Directory]::Exists($d)) { [System.IO.Directory]::CreateDirectory($d) | Out-Null }; if (-not $e.FullName.EndsWith('/')) { [System.IO.Compression.ZipFileExtensions]::ExtractToFile($e, $t, $true) } } } finally { $z.Dispose() }"
+    del "%PY_ZIP%" 2>nul
+
+    rem Uncomment 'import site' in python310._pth to enable site-packages / pip
+    if exist "%ENV_DIR%\python310._pth" (
+        powershell -NoProfile -ExecutionPolicy Bypass -Command "$p = Join-Path $env:ENV_DIR 'python310._pth'; (Get-Content -LiteralPath $p) -replace '#import site', 'import site' | Set-Content -LiteralPath $p"
+    )
+)
+
+if not exist "%ENV_DIR%\Scripts\pip.exe" (
+    echo Downloading get-pip.py...
+    powershell -NoProfile -ExecutionPolicy Bypass -Command "[Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12; (New-Object System.Net.WebClient).DownloadFile($env:PIP_URL, $env:GET_PIP)"
+
+    echo Installing pip into 32-bit Python environment...
+    "%ENV_DIR%\python.exe" "%GET_PIP%" --no-warn-script-location
+    del "%GET_PIP%" 2>nul
+)
+
+echo Installing dependencies into local 32-bit Python environment...
+"%ENV_DIR%\python.exe" -m pip install -r requirements.txt --no-warn-script-location
+
+echo.
+echo Launching Tobii 4C OSC Streamer via local 32-bit Python environment...
+"%ENV_DIR%\python.exe" "%~dp0tobii_4c_osc.py"
+
+:END
+if %errorlevel% neq 0 (
+    echo.
+    echo [NOTICE] Script exited with code %errorlevel%.
+    pause
+)

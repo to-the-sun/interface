@@ -2,7 +2,8 @@ import sys
 import time
 import os
 import ctypes
-from ctypes import c_int, c_uint32, c_int64, c_float, c_char_p, c_void_p, POINTER, Structure, CFUNCTYPE
+import ctypes.util
+from ctypes import c_int, c_uint32, c_int64, c_float, c_char_p, c_void_p, POINTER, Structure, CFUNCTYPE, byref
 import traceback
 import json
 import math
@@ -28,6 +29,11 @@ TOBII_ERROR_NO_ERROR = 0
 class TobiiValidity:
     TOBII_VALIDITY_INVALID = 0
     TOBII_VALIDITY_VALID = 1
+
+class TobiiFieldOfUse:
+    TOBII_FIELD_OF_USE_DEFAULT = 0
+    TOBII_FIELD_OF_USE_INTERACTIVE = 1
+    TOBII_FIELD_OF_USE_ANALYTICAL = 2
 
 class tobii_gaze_point_t(Structure):
     _fields_ = [
@@ -90,36 +96,54 @@ def load_tobii_stream_engine():
         r"C:\Program Files (x86)\Tobii\Tobii Eye Tracker Core Software",
         r"C:\Program Files\Tobii\Tobii Core Software",
         r"C:\Program Files (x86)\Tobii\Tobii Core Software",
+        r"C:\Program Files\Tobii\Tobii Service",
+        r"C:\Program Files (x86)\Tobii\Tobii Service",
     ]
+
+    last_errors = []
 
     for d in search_dirs:
         for name in lib_names:
             full_path = os.path.join(d, name)
             if os.path.exists(full_path):
-                try:
-                    if hasattr(os, "add_dll_directory") and sys.platform == "win32":
+                if sys.platform == "win32":
+                    if hasattr(os, "add_dll_directory"):
                         try:
                             os.add_dll_directory(d)
                         except Exception:
                             pass
+                    # Add directory to PATH so dependent DLLs can be located
+                    if d not in os.environ.get("PATH", "").split(os.path.pathsep):
+                        os.environ["PATH"] = d + os.path.pathsep + os.environ.get("PATH", "")
+
+                try:
                     return ctypes.CDLL(full_path)
-                except Exception:
-                    pass
+                except Exception as err:
+                    last_errors.append(f"Found '{full_path}' but failed to load (CDLL): {err}")
+                    if sys.platform == "win32":
+                        try:
+                            return ctypes.WinDLL(full_path)
+                        except Exception as win_err:
+                            last_errors.append(f"Found '{full_path}' but failed to load (WinDLL): {win_err}")
 
     # Try standard system load
     for name in lib_names:
         try:
             return ctypes.CDLL(name)
-        except Exception:
-            pass
+        except Exception as err:
+            last_errors.append(f"System load '{name}' failed: {err}")
 
-    import ctypes.util
     found_lib = ctypes.util.find_library("tobii_stream_engine")
     if found_lib:
         try:
             return ctypes.CDLL(found_lib)
-        except Exception:
-            pass
+        except Exception as err:
+            last_errors.append(f"find_library '{found_lib}' failed to load: {err}")
+
+    if last_errors:
+        print("\nDLL Loader Diagnostic Log:")
+        for err in last_errors:
+            print(f" - {err}")
 
     return None
 
@@ -130,6 +154,12 @@ class TobiiStreamEngineAPI:
         self.lib = lib
         if not self.lib:
             return
+
+        # tobii_error_message
+        self.tobii_error_message = getattr(self.lib, "tobii_error_message", None)
+        if self.tobii_error_message:
+            self.tobii_error_message.argtypes = [c_int]
+            self.tobii_error_message.restype = c_char_p
 
         # tobii_api_create
         self.tobii_api_create = getattr(self.lib, "tobii_api_create", None)
@@ -149,11 +179,8 @@ class TobiiStreamEngineAPI:
             self.tobii_enumerate_local_device_urls.argtypes = [c_void_p, tobii_url_receiver_t, c_void_p]
             self.tobii_enumerate_local_device_urls.restype = c_int
 
-        # tobii_device_create
-        self.tobii_device_create = getattr(self.lib, "tobii_device_create", None)
-        if self.tobii_device_create:
-            self.tobii_device_create.argtypes = [c_void_p, c_char_p, c_void_p, POINTER(c_void_p)]
-            self.tobii_device_create.restype = c_int
+        # tobii_device_create raw reference
+        self.raw_tobii_device_create = getattr(self.lib, "tobii_device_create", None)
 
         # tobii_device_destroy
         self.tobii_device_destroy = getattr(self.lib, "tobii_device_destroy", None)
@@ -202,6 +229,65 @@ class TobiiStreamEngineAPI:
         if self.tobii_head_pose_unsubscribe:
             self.tobii_head_pose_unsubscribe.argtypes = [c_void_p]
             self.tobii_head_pose_unsubscribe.restype = c_int
+
+    def create_device(self, api_handle, url_bytes, dev_ptr):
+        if not self.raw_tobii_device_create:
+            return TOBII_ERROR_NO_ERROR - 1
+
+        attempts = []
+
+        # Candidate URLs: Specific device URL bytes, None (for default device)
+        url_candidates = [url_bytes, None]
+
+        for u in url_candidates:
+            # Variant A: 3 parameters (api_handle, url, device_ptr)
+            try:
+                self.raw_tobii_device_create.argtypes = [c_void_p, c_char_p, POINTER(c_void_p)]
+                self.raw_tobii_device_create.restype = c_int
+                ret = self.raw_tobii_device_create(api_handle, u, byref(dev_ptr))
+                if ret == TOBII_ERROR_NO_ERROR and dev_ptr.value:
+                    return ret
+                attempts.append(f"3-param (url={'default' if u is None else u.decode('utf-8', 'ignore')}): code {ret} ({self.get_error_str(ret)})")
+            except Exception as e:
+                attempts.append(f"3-param exception: {e}")
+
+            # Variant B: 4 parameters with field of use INTERACTIVE (1)
+            try:
+                self.raw_tobii_device_create.argtypes = [c_void_p, c_char_p, c_int, POINTER(c_void_p)]
+                self.raw_tobii_device_create.restype = c_int
+                ret = self.raw_tobii_device_create(api_handle, u, TobiiFieldOfUse.TOBII_FIELD_OF_USE_INTERACTIVE, byref(dev_ptr))
+                if ret == TOBII_ERROR_NO_ERROR and dev_ptr.value:
+                    return ret
+                attempts.append(f"4-param INTERACTIVE (url={'default' if u is None else u.decode('utf-8', 'ignore')}): code {ret} ({self.get_error_str(ret)})")
+            except Exception as e:
+                attempts.append(f"4-param INTERACTIVE exception: {e}")
+
+            # Variant C: 4 parameters with field of use DEFAULT (0)
+            try:
+                self.raw_tobii_device_create.argtypes = [c_void_p, c_char_p, c_int, POINTER(c_void_p)]
+                self.raw_tobii_device_create.restype = c_int
+                ret = self.raw_tobii_device_create(api_handle, u, TobiiFieldOfUse.TOBII_FIELD_OF_USE_DEFAULT, byref(dev_ptr))
+                if ret == TOBII_ERROR_NO_ERROR and dev_ptr.value:
+                    return ret
+                attempts.append(f"4-param DEFAULT (url={'default' if u is None else u.decode('utf-8', 'ignore')}): code {ret} ({self.get_error_str(ret)})")
+            except Exception as e:
+                attempts.append(f"4-param DEFAULT exception: {e}")
+
+        print("\n[Device Create Diagnostic Attempts]:")
+        for att in attempts:
+            print(f" - {att}")
+
+        return -1
+
+    def get_error_str(self, err_code):
+        if self.tobii_error_message:
+            try:
+                msg = self.tobii_error_message(err_code)
+                if msg:
+                    return msg.decode('utf-8')
+            except Exception:
+                pass
+        return f"Error code {err_code}"
 
 
 # --- Configuration ---
@@ -403,9 +489,11 @@ def main():
         if not raw_lib:
             print("=" * 72)
             print("ERROR: Could not load 'tobii_stream_engine.dll' (or system equivalent).")
-            print("\nPlease ensure Tobii Eye Tracking Service / Stream Engine is installed:")
-            print("  1. Download and install Tobii Experience or Tobii Core Software.")
-            print("  2. Verify 'tobii_stream_engine.dll' is present in system PATH or program folder.")
+            print("\nTroubleshooting Guidance:")
+            print("  1. Check architecture match: Python bitness must match the DLL bitness.")
+            print(f"     Current Python process architecture: {struct_calcsize_bits()}-bit")
+            print("  2. Ensure Tobii Eye Tracking Service / Stream Engine is installed.")
+            print("  3. Check DLL Loader Diagnostic Log printed above for the exact error reason.")
             print("=" * 72)
             if sys.platform == "win32":
                 input("\nPress Enter to exit...")
@@ -422,7 +510,7 @@ def main():
         api_ptr = c_void_p()
         res = api.tobii_api_create(ctypes.byref(api_ptr), None, None)
         if res != TOBII_ERROR_NO_ERROR or not api_ptr:
-            print(f"ERROR: tobii_api_create failed with status code {res}.")
+            print(f"ERROR: tobii_api_create failed with status: {api.get_error_str(res)} ({res}).")
             if sys.platform == "win32":
                 input("\nPress Enter to exit...")
             return
@@ -475,9 +563,12 @@ def main():
             url = state.device_urls[idx]
             state.current_device_url = url
             dev_ptr = c_void_p()
-            ret = api.tobii_device_create(state.api_handle, url.encode('utf-8'), None, ctypes.byref(dev_ptr))
+
+            ret = api.create_device(state.api_handle, url.encode('utf-8'), dev_ptr)
+
             if ret != TOBII_ERROR_NO_ERROR or not dev_ptr:
-                print(f"Failed to create Tobii device for URL '{url}' (error: {ret})")
+                err_desc = api.get_error_str(ret)
+                print(f"Failed to create Tobii device for URL '{url}' ({err_desc}, code: {ret})")
                 return False
 
             state.device_handle = dev_ptr
@@ -607,6 +698,10 @@ def main():
         traceback.print_exc()
         if sys.platform == "win32":
             input("\nPress Enter to close...")
+
+def struct_calcsize_bits():
+    import struct
+    return struct.calcsize("P") * 8
 
 if __name__ == "__main__":
     main()
