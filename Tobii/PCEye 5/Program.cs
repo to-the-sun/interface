@@ -32,6 +32,8 @@ namespace PCEyeWinGaze
         private static long _frameCount = 0;
         private static long _mouseMoveCount = 0;
         private static bool _loggedProperties = false;
+        private static bool _firstGazeMovedLogged = false;
+        private static bool _firstEyeGazePosLogged = false;
 
         [STAThread]
         static void Main(string[] args)
@@ -104,6 +106,7 @@ namespace PCEyeWinGaze
             form.Shown += async (s, e) =>
             {
                 Log("Scanning Windows Gaze Devices via GazeInputSourcePreview.CreateWatcher()...");
+                bool deviceAddedEmitted = false;
                 try
                 {
                     var watcher = GazeInputSourcePreview.CreateWatcher();
@@ -111,27 +114,25 @@ namespace PCEyeWinGaze
                     {
                         watcher.Added += (w, devArgs) =>
                         {
+                            deviceAddedEmitted = true;
+                            Log(" [CHECK 1] GazeInputSourcePreview.CreateWatcher() emitted Added event.");
                             var device = devArgs.Device;
                             if (device != null)
                             {
-                                string devInfo = $"Id: {device.Id}";
                                 try
                                 {
-                                    var props = device.GetType().GetProperties();
-                                    foreach (var p in props)
-                                    {
-                                        if (p.Name != "Id")
-                                        {
-                                            devInfo += $" | {p.Name}: {p.GetValue(device)}";
-                                        }
-                                    }
+                                    Log($"   -> [CHECK 2] Tracker CanTrackEyes: {device.CanTrackEyes}");
+                                    Log($"   -> [CHECK 3] Tracker ConfigurationState: {device.ConfigurationState}");
+                                    Log($"   -> Tracker Id: {device.Id}");
                                 }
-                                catch { }
-                                Log($" [Gaze Device Found] {devInfo}");
+                                catch (Exception ex)
+                                {
+                                    Log($"   -> Notice reading GazeDevicePreview properties: {ex.Message}");
+                                }
                             }
                             else
                             {
-                                Log($" [Gaze Device Event] {devArgs}");
+                                Log($"   -> GazeDevicePreview object in Added event is null.");
                             }
                         };
                         watcher.EnumerationCompleted += (w, obj) =>
@@ -139,13 +140,18 @@ namespace PCEyeWinGaze
                             Log(" [Gaze Device Scan Completed]");
                         };
                         watcher.Start();
-                        await Task.Delay(1000);
+                        await Task.Delay(1500);
                         watcher.Stop();
                     }
                 }
                 catch (Exception ex)
                 {
                     Log($" Gaze Device Watcher Notice: {ex.Message}");
+                }
+
+                if (!deviceAddedEmitted)
+                {
+                    Log(" [CHECK 1 NOTICE] GazeInputSourcePreview.CreateWatcher() did not emit an Added event during scan.");
                 }
 
                 Log("\nObtaining GazeInputSourcePreview instance in UI View Context...");
@@ -159,6 +165,7 @@ namespace PCEyeWinGaze
                 {
                     Log("\n========================================================================");
                     Log(" ERROR: Windows GazeInputSourcePreview returned 'Element Not Found' (0x80070490).");
+                    Log(" [CHECK 4] GazeInputSourcePreview.GetForCurrentView(): FAILED (0x80070490)");
                     Log("========================================================================");
                     Log(" Why this occurs:");
                     Log(" 1. Application lacks package identity / gazeInput capability registration.");
@@ -172,16 +179,18 @@ namespace PCEyeWinGaze
                 }
                 catch (Exception ex)
                 {
-                    Log($"\nFailed to obtain GazeInputSourcePreview: {ex.GetType().Name} - {ex.Message}");
+                    Log($"\n [CHECK 4] GazeInputSourcePreview.GetForCurrentView(): FAILED ({ex.GetType().Name} - {ex.Message})");
                     return;
                 }
 
                 if (gazeSource == null)
                 {
-                    Log("\nERROR: GazeInputSourcePreview.GetForCurrentView() returned null.");
+                    Log("\n [CHECK 4] GazeInputSourcePreview.GetForCurrentView(): returned null.");
                     Log("Ensure PCEye 5 is connected and calibrated in TD Control.");
                     return;
                 }
+
+                Log(" [CHECK 4] GazeInputSourcePreview.GetForCurrentView() SUCCEEDED (Manifest capability & consent prompt active).");
 
                 gazeSource.GazeMoved += (sender, args) =>
                 {
@@ -206,8 +215,21 @@ namespace PCEyeWinGaze
         private static void OnGazeMoved(GazeInputSourcePreview sender, GazeMovedPreviewEventArgs args, Action<string> log)
         {
             _frameCount++;
+            if (!_firstGazeMovedLogged)
+            {
+                _firstGazeMovedLogged = true;
+                log(" [CHECK 5] GazeMoved event FIRED!");
+            }
+
             var currentPoint = args.CurrentPoint;
             if (currentPoint == null) return;
+
+            if (!_firstEyeGazePosLogged)
+            {
+                _firstEyeGazePosLogged = true;
+                bool isEyeGazePosNonNull = CheckEyeGazePositionNonNull(currentPoint, out string gazePosInfo);
+                log($" [CHECK 6] args.CurrentPoint.EyeGazePosition non-null: {isEyeGazePosNonNull} ({gazePosInfo})");
+            }
 
             if (TryExtractXY(currentPoint, out double px, out double py, log))
             {
@@ -227,6 +249,36 @@ namespace PCEyeWinGaze
                     }
                 }
             }
+        }
+
+        private static bool CheckEyeGazePositionNonNull(object pointObj, out string info)
+        {
+            info = "null";
+            if (pointObj == null) return false;
+
+            Type type = pointObj.GetType();
+            string[] candidateNames = new string[] { "EyeGazePosition", "EyeGazePositionInPixels", "Point", "Position", "GazePoint", "Location" };
+
+            foreach (var name in candidateNames)
+            {
+                var prop = type.GetProperty(name, BindingFlags.Public | BindingFlags.Instance | BindingFlags.IgnoreCase);
+                if (prop != null)
+                {
+                    object? val = prop.GetValue(pointObj);
+                    if (val != null)
+                    {
+                        if (TryGetSubXY(val, out double x, out double y))
+                        {
+                            info = $"{name} = ({x:F1}, {y:F1})";
+                            return true;
+                        }
+                        info = $"{name} = {val}";
+                        return true;
+                    }
+                }
+            }
+
+            return false;
         }
 
         private static bool TryExtractXY(object pointObj, out double x, out double y, Action<string> log)
