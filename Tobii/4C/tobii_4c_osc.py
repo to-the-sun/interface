@@ -361,6 +361,37 @@ OSC_PORT = 9002
 TCP_PORT = 10003
 CONFIG_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "checkbox_states_tobii.json")
 
+def compute_smoothing(jump_pixels, min_jump=5.0, max_jump=100.0, max_smoothing=0.8, curve_factor=2.0):
+    """
+    Computes smoothing factor (0.0 to max_smoothing) given a movement jump in pixels.
+    Small jumps (0 to min_jump pixels) receive maximum smoothing (max_smoothing).
+    As the jump size increases towards max_jump, smoothing decreases towards 0.0 with an exponential curve response.
+    """
+    if max_jump <= min_jump:
+        return 0.0
+
+    if jump_pixels <= min_jump:
+        return max(0.0, min(0.999, float(max_smoothing)))
+
+    if jump_pixels >= max_jump:
+        return 0.0
+
+    # norm_small_jump goes from 1.0 (at jump_pixels == min_jump) down to 0.0 (at jump_pixels == max_jump)
+    norm_small_jump = (max_jump - jump_pixels) / (max_jump - min_jump)
+    norm_small_jump = min(1.0, max(0.0, norm_small_jump))
+
+    if abs(curve_factor) < 1e-6:
+        factor = norm_small_jump
+    elif curve_factor > 0:
+        factor = math.pow(norm_small_jump, 1.0 + float(curve_factor))
+    else:
+        exponent = 1.0 + abs(float(curve_factor))
+        factor = 1.0 - math.pow(1.0 - norm_small_jump, exponent)
+
+    smoothing = factor * float(max_smoothing)
+    return max(0.0, min(0.999, smoothing))
+
+
 def get_screen_size():
     if sys.platform == "win32":
         try:
@@ -412,9 +443,40 @@ def move_cursor_to_gaze(gx, gy):
     if not state.move_mouse or math.isnan(gx) or math.isnan(gy):
         return False
     sw, sh = state.screen_size
-    px = max(0.0, min(1.0, float(gx))) * sw
-    py = max(0.0, min(1.0, float(gy))) * sh
-    return set_cursor_pos(px, py)
+    target_x = max(0.0, min(1.0, float(gx))) * sw
+    target_y = max(0.0, min(1.0, float(gy))) * sh
+
+    if state.curr_mouse_x is None or state.curr_mouse_y is None:
+        state.curr_mouse_x = target_x
+        state.curr_mouse_y = target_y
+        state.last_jump_dist = 0.0
+        state.last_smoothing = compute_smoothing(
+            0.0,
+            min_jump=state.smooth_min_jump,
+            max_jump=state.smooth_max_jump,
+            max_smoothing=state.max_smoothing,
+            curve_factor=state.curve_factor
+        )
+    else:
+        dx = target_x - state.curr_mouse_x
+        dy = target_y - state.curr_mouse_y
+        dist = math.hypot(dx, dy)
+
+        smoothing = compute_smoothing(
+            dist,
+            min_jump=state.smooth_min_jump,
+            max_jump=state.smooth_max_jump,
+            max_smoothing=state.max_smoothing,
+            curve_factor=state.curve_factor
+        )
+        state.last_jump_dist = dist
+        state.last_smoothing = smoothing
+
+        alpha = 1.0 - smoothing
+        state.curr_mouse_x += dx * alpha
+        state.curr_mouse_y += dy * alpha
+
+    return set_cursor_pos(state.curr_mouse_x, state.curr_mouse_y)
 
 class Feature:
     def __init__(self, name, address, enabled=True, is_complex=False, max_v=1.0):
@@ -433,6 +495,16 @@ class AppState:
         self.features = []
         self.config = self.load_config()
         self.move_mouse = self.config.get("move_mouse", True)
+        self.smooth_min_jump = float(self.config.get("smooth_min_jump", 5.0))
+        self.smooth_max_jump = float(self.config.get("smooth_max_jump", 100.0))
+        self.max_smoothing = float(self.config.get("max_smoothing", 0.8))
+        self.curve_factor = float(self.config.get("curve_factor", 2.0))
+        self.curr_mouse_x = None
+        self.curr_mouse_y = None
+        self.last_jump_dist = 0.0
+        self.last_smoothing = 0.0
+        self.active_slider = None
+        self.slider_rects = {}
         self.screen_size = get_screen_size()
         self.setup_features()
         self.last_gaze_data = None
@@ -465,6 +537,10 @@ class AppState:
         for f in self.features:
             new_config[f.address] = f.enabled
         new_config["move_mouse"] = self.move_mouse
+        new_config["smooth_min_jump"] = self.smooth_min_jump
+        new_config["smooth_max_jump"] = self.smooth_max_jump
+        new_config["max_smoothing"] = self.max_smoothing
+        new_config["curve_factor"] = self.curve_factor
         self.config = new_config
         try:
             with open(CONFIG_FILE, 'w') as f:
@@ -501,6 +577,29 @@ class AppState:
 
 state = AppState()
 
+def update_slider_param(param_name, mouse_x, s_info):
+    rel_x = mouse_x - 640  # offset by display_img width
+    track_x1 = s_info['track_x1']
+    track_w = s_info['track_w']
+    val_min = s_info['val_min']
+    val_max = s_info['val_max']
+
+    norm = max(0.0, min(1.0, float(rel_x - track_x1) / float(track_w)))
+    new_val = val_min + norm * (val_max - val_min)
+
+    if param_name == "curve_factor":
+        state.curve_factor = round(new_val, 2)
+    elif param_name == "max_smoothing":
+        state.max_smoothing = round(new_val, 2)
+    elif param_name == "smooth_min_jump":
+        state.smooth_min_jump = round(new_val, 1)
+        if state.smooth_min_jump >= state.smooth_max_jump:
+            state.smooth_max_jump = state.smooth_min_jump + 1.0
+    elif param_name == "smooth_max_jump":
+        state.smooth_max_jump = round(new_val, 1)
+        if state.smooth_max_jump <= state.smooth_min_jump:
+            state.smooth_min_jump = max(0.0, state.smooth_max_jump - 1.0)
+
 def on_mouse(event, x, y, flags, param):
     if event == cv2.EVENT_LBUTTONDOWN:
         if state.mouse_ui_rect and state.mouse_ui_rect[0] <= x <= state.mouse_ui_rect[2] and state.mouse_ui_rect[1] <= y <= state.mouse_ui_rect[3]:
@@ -508,11 +607,132 @@ def on_mouse(event, x, y, flags, param):
             state.save_config()
             print(f"[Mouse Control] Toggled mouse control via UI: {'ON' if state.move_mouse else 'OFF'}")
             return
+
+        rel_x = x - 640
+        for param_name, s_info in state.slider_rects.items():
+            r = s_info['rect']
+            if r[0] <= rel_x <= r[2] and r[1] <= y <= r[3]:
+                state.active_slider = param_name
+                update_slider_param(param_name, x, s_info)
+                return
+
         for f in state.features:
             if f.ui_rect and f.ui_rect[0] <= x <= f.ui_rect[2] and f.ui_rect[1] <= y <= f.ui_rect[3]:
                 f.enabled = not f.enabled
                 state.save_config()
                 break
+
+    elif event == cv2.EVENT_MOUSEMOVE:
+        if state.active_slider and (flags & cv2.EVENT_FLAG_LBUTTON):
+            s_info = state.slider_rects.get(state.active_slider)
+            if s_info:
+                update_slider_param(state.active_slider, x, s_info)
+
+    elif event == cv2.EVENT_LBUTTONUP:
+        if state.active_slider:
+            state.save_config()
+            state.active_slider = None
+
+def render_middle_panel(state, h=480, w=380):
+    panel = np.zeros((h, w, 3), dtype=np.uint8)
+
+    # Header
+    cv2.putText(panel, "Real-Time Mouse Smoothing", (15, 22), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 255), 1)
+
+    # Graph bounding box
+    graph_x, graph_y, graph_w, graph_h = 45, 35, 310, 190
+    cv2.rectangle(panel, (graph_x, graph_y), (graph_x + graph_w, graph_y + graph_h), (80, 80, 80), 1)
+
+    # Gridlines
+    for i in range(1, 5):
+        gy = graph_y + graph_h - int((i / 5.0) * graph_h)
+        cv2.line(panel, (graph_x, gy), (graph_x + graph_w, gy), (40, 40, 40), 1)
+        gx = graph_x + int((i / 5.0) * graph_w)
+        cv2.line(panel, (gx, graph_y), (gx, graph_y + graph_h), (40, 40, 40), 1)
+
+    min_j = state.smooth_min_jump
+    max_j = max(min_j + 1.0, state.smooth_max_jump)
+    max_s = state.max_smoothing
+    c_fac = state.curve_factor
+
+    # Min Jump threshold line (vertical dashed/yellow)
+    if min_j > 0 and min_j < max_j:
+        min_x = graph_x + int((min_j / max_j) * graph_w)
+        cv2.line(panel, (min_x, graph_y), (min_x, graph_y + graph_h), (0, 200, 255), 1)
+
+    # Max Smoothing reference line (horizontal cyan)
+    max_s_y = graph_y + graph_h - int(max_s * graph_h)
+    cv2.line(panel, (graph_x, max_s_y), (graph_x + graph_w, max_s_y), (255, 200, 0), 1)
+
+    # Plot Curve
+    pts = []
+    num_samples = 100
+    for step in range(num_samples + 1):
+        jp = (max_j / num_samples) * step
+        sm = compute_smoothing(jp, min_j, max_j, max_s, c_fac)
+        px = graph_x + int((step / num_samples) * graph_w)
+        py = graph_y + graph_h - int((sm / 1.0) * graph_h)
+        pts.append((px, py))
+
+    for i in range(len(pts) - 1):
+        cv2.line(panel, pts[i], pts[i+1], (0, 255, 200), 2)
+
+    # Axis Labels
+    cv2.putText(panel, "0px", (graph_x - 5, graph_y + graph_h + 15), cv2.FONT_HERSHEY_SIMPLEX, 0.35, (180, 180, 180), 1)
+    cv2.putText(panel, f"{int(max_j)}px", (graph_x + graph_w - 25, graph_y + graph_h + 15), cv2.FONT_HERSHEY_SIMPLEX, 0.35, (180, 180, 180), 1)
+    cv2.putText(panel, "1.0", (15, graph_y + 12), cv2.FONT_HERSHEY_SIMPLEX, 0.35, (180, 180, 180), 1)
+    cv2.putText(panel, "0.0", (15, graph_y + graph_h), cv2.FONT_HERSHEY_SIMPLEX, 0.35, (180, 180, 180), 1)
+
+    # Live Real-Time Indicator Dot
+    live_dist = state.last_jump_dist
+    live_sm = state.last_smoothing
+    live_px = graph_x + int(min(1.0, live_dist / max_j) * graph_w)
+    live_py = graph_y + graph_h - int(min(1.0, live_sm / 1.0) * graph_h)
+
+    cv2.circle(panel, (live_px, live_py), 5, (0, 0, 255), -1)
+    cv2.circle(panel, (live_px, live_py), 8, (0, 255, 255), 1)
+
+    status_txt = f"Jump: {live_dist:.1f}px | Smooth: {live_sm:.2f}"
+    cv2.putText(panel, status_txt, (graph_x + 5, graph_y + 18), cv2.FONT_HERSHEY_SIMPLEX, 0.38, (0, 255, 255), 1)
+
+    # Sliders rendering
+    slider_defs = [
+        ("curve_factor", f"Curve Severity: {c_fac:+.2f}", c_fac, -5.0, 5.0),
+        ("max_smoothing", f"Max Smoothing: {max_s:.2f}", max_s, 0.0, 0.98),
+        ("smooth_min_jump", f"Min Jump Threshold: {min_j:.1f} px", min_j, 0.0, 50.0),
+        ("smooth_max_jump", f"Max Jump Scale: {max_j:.1f} px", max_j, 10.0, 300.0),
+    ]
+
+    sy_start = 255
+    sy_step = 52
+    track_x1, track_x2 = 25, 355
+    track_w = track_x2 - track_x1
+
+    state.slider_rects = {}
+
+    for idx, (param_name, label, val, val_min, val_max) in enumerate(slider_defs):
+        sy = sy_start + idx * sy_step
+        cv2.putText(panel, label, (track_x1, sy), cv2.FONT_HERSHEY_SIMPLEX, 0.42, (255, 255, 255), 1)
+
+        track_y = sy + 14
+        cv2.line(panel, (track_x1, track_y), (track_x2, track_y), (80, 80, 80), 4)
+
+        norm = max(0.0, min(1.0, (val - val_min) / (val_max - val_min))) if val_max > val_min else 0.0
+        handle_x = track_x1 + int(norm * track_w)
+
+        cv2.line(panel, (track_x1, track_y), (handle_x, track_y), (0, 255, 200), 4)
+        cv2.circle(panel, (handle_x, track_y), 7, (255, 255, 255), -1)
+        cv2.circle(panel, (handle_x, track_y), 8, (0, 255, 200), 1)
+
+        state.slider_rects[param_name] = {
+            'rect': [track_x1 - 5, track_y - 10, track_x2 + 5, track_y + 10],
+            'val_min': val_min,
+            'val_max': val_max,
+            'track_x1': track_x1,
+            'track_w': track_w
+        }
+
+    return panel
 
 def handle_tcp_command(cmd_str):
     cmd = cmd_str.strip().lower()
@@ -715,7 +935,21 @@ def main():
         parser.add_argument('--port', type=int, default=OSC_PORT, help=f'OSC Destination Port (default: {OSC_PORT})')
         parser.add_argument('--tcp-port', type=int, default=TCP_PORT, help=f'TCP Server Listening Port (default: {TCP_PORT})')
         parser.add_argument('--no-elevate', action='store_true', help='Do not attempt to automatically elevate privileges to Administrator on Windows')
+        parser.add_argument('--smooth-min-jump', type=float, help='Minimum jump in pixels below which max smoothing applies (default: 5.0)')
+        parser.add_argument('--smooth-max-jump', type=float, help='Maximum jump in pixels at which smoothing becomes 0.0 (default: 100.0)')
+        parser.add_argument('--max-smoothing', type=float, help='Maximum smoothing factor [0.0, 1.0) applied to small movements (default: 0.8)')
+        parser.add_argument('--curve-factor', type=float, help='Exponential curve factor (> 0 for exponential response, default: 2.0)')
         args, _ = parser.parse_known_args()
+
+        if args.smooth_min_jump is not None:
+            state.smooth_min_jump = float(args.smooth_min_jump)
+        if args.smooth_max_jump is not None:
+            state.smooth_max_jump = float(args.smooth_max_jump)
+        if args.max_smoothing is not None:
+            state.max_smoothing = float(args.max_smoothing)
+        if args.curve_factor is not None:
+            state.curve_factor = float(args.curve_factor)
+        state.save_config()
 
         if not args.no_elevate:
             elevate_privileges()
@@ -851,16 +1085,17 @@ def main():
 
         win_name = 'Tobii 4C OSC (Stream Engine)'
         cv2.namedWindow(win_name, cv2.WINDOW_NORMAL)
-        cv2.resizeWindow(win_name, 1420, 480)
+        cv2.resizeWindow(win_name, 1800, 480)
         cv2.setMouseCallback(win_name, on_mouse)
 
         # Draw initial frame and minimize GUI window immediately
-        initial_img = np.zeros((480, 1420, 3), dtype=np.uint8)
+        initial_img = np.zeros((480, 1800, 3), dtype=np.uint8)
         cv2.imshow(win_name, initial_img)
         cv2.waitKey(1)
         minimize_gui_window(win_name)
 
         w, h = 640, 480
+        middle_w = 380
 
         print(f"Streaming data to {args.ip}:{args.port}")
         print(f"TCP control server listening on 127.0.0.1:{state.tcp_port}")
@@ -907,6 +1142,9 @@ def main():
                     avg_y = (ly + ry) / 2.0
                     cv2.drawMarker(display_img, (int(avg_x * w), int(avg_y * h)), (0, 255, 0), cv2.MARKER_CROSS, 20, 2)
 
+            # --- Rendering Middle Panel ---
+            middle_panel = render_middle_panel(state, h=h, w=middle_w)
+
             # --- Rendering Sidebar ---
             sidebar_col_w = 260
             sidebar = np.zeros((h, sidebar_col_w * 3, 3), dtype=np.uint8)
@@ -922,7 +1160,7 @@ def main():
                 if f.enabled:
                     cv2.rectangle(sidebar, (tx+2, ty-cb_size+2), (tx+cb_size-2, ty-2), (0,255,0), -1)
 
-                f.ui_rect = [w + tx, ty-cb_size, w + tx + sidebar_col_w, ty+5]
+                f.ui_rect = [w + middle_w + tx, ty-cb_size, w + middle_w + tx + sidebar_col_w, ty+5]
                 cv2.putText(sidebar, f.name[:20], (tx+15, ty), cv2.FONT_HERSHEY_SIMPLEX, 0.4, (255, 255, 255), 1)
 
                 # Bar visualization
@@ -932,7 +1170,7 @@ def main():
                 color = (255,100,100) if "Pose" in f.name else (0,255,0)
                 cv2.rectangle(sidebar, (tx+120, ty-8), (tx+120+bar_w, ty), color, -1)
 
-            cv2.imshow(win_name, np.hstack((display_img, sidebar)))
+            cv2.imshow(win_name, np.hstack((display_img, middle_panel, sidebar)))
             key = cv2.waitKey(5) & 0xFF
             if key == 27: break  # ESC
             if key == ord('n') and len(state.device_urls) > 1:  # Cycle trackers
