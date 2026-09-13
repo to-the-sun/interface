@@ -13,32 +13,33 @@ if exist "%ENV_DIR%\python.exe" (
 
 rem Try 32-bit Python via launcher first if installed on system
 where py >nul 2>nul
-if %errorlevel% equ 0 (
-    py -3-32 -c "import sys" >nul 2>&1
-    if %errorlevel% equ 0 (
-        echo Found system Python 32-bit via launcher!
-        echo Installing / verifying required dependencies...
-        py -3-32 -m pip install -r requirements.txt
-        echo.
-        echo Launching Tobii 4C OSC Streamer with system 32-bit Python...
-        py -3-32 "%~dp0tobii_4c_osc.py"
-        if %errorlevel% equ 0 goto :END
-    )
-)
+if %errorlevel% neq 0 goto :CHECK_SYSTEM_PYTHON
 
-rem Check if standard system Python can load the script without 32-bit architecture mismatch error
+py -3-32 -c "import sys" >nul 2>&1
+if errorlevel 1 goto :CHECK_SYSTEM_PYTHON
+
+echo Found system Python 32-bit via launcher!
+echo Installing / verifying required dependencies...
+py -3-32 -m pip install -r requirements.txt
+echo.
+echo Launching Tobii 4C OSC Streamer with system 32-bit Python...
+py -3-32 "%~dp0tobii_4c_osc.py"
+if %errorlevel% equ 0 goto :END
+
+:CHECK_SYSTEM_PYTHON
+rem Check if standard system Python can load 32-bit DLL
 where python >nul 2>nul
-if %errorlevel% equ 0 (
-    echo Testing system Python...
-    python -c "import ctypes; sys_bit=ctypes.sizeof(ctypes.c_void_p)*8; exit(0 if sys_bit==32 else 1)" >nul 2>&1
-    if %errorlevel% equ 0 (
-        echo System Python is 32-bit. Installing dependencies and launching...
-        python -m pip install -r requirements.txt
-        python "%~dp0tobii_4c_osc.py"
-        if %errorlevel% equ 0 goto :END
-    )
-)
+if %errorlevel% neq 0 goto :SETUP_LOCAL_ENV
 
+python -c "import ctypes; sys_bit=ctypes.sizeof(ctypes.c_void_p)*8; exit(0 if sys_bit==32 else 1)" >nul 2>&1
+if errorlevel 1 goto :SETUP_LOCAL_ENV
+
+echo System Python is 32-bit. Installing dependencies and launching...
+python -m pip install -r requirements.txt
+python "%~dp0tobii_4c_osc.py"
+if %errorlevel% equ 0 goto :END
+
+:SETUP_LOCAL_ENV
 echo.
 echo ========================================================================
 echo Notice: 32-bit Tobii Stream Engine DLL requires a 32-bit Python runtime.
@@ -56,7 +57,7 @@ set "PIP_URL=https://bootstrap.pypa.io/get-pip.py"
 if not exist "%ENV_DIR%\python.exe" (
     echo Downloading 32-bit Python 3.10 embeddable runtime...
     powershell -NoProfile -ExecutionPolicy Bypass -Command "[Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12; Invoke-WebRequest -Uri '%PY_URL%' -OutFile '%PY_ZIP%'"
-    if %errorlevel% neq 0 (
+    if errorlevel 1 (
         echo [ERROR] Failed to download 32-bit Python package.
         pause
         exit /b 1
