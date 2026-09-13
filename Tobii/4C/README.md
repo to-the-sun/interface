@@ -1,11 +1,13 @@
-# Tobii 4C OSC Streamer
+# Tobii 4C OSC Streamer (Tobii Stream Engine API)
 
 This program streams gaze and head pose data from a Tobii 4C eye tracker to OSC, mirroring the functionality and UI of the `Google/MediaPipe/mediapipe_osc.py` script.
 
+It connects to the **Tobii Stream Engine API** using Python's `ctypes`, removing the requirement for `tobii-research` (Tobii Pro SDK) or special Pro Upgrade licensing.
+
 ## Requirements
 
-1.  **Python 3.10**: The `tobii-research` library is currently most compatible with Python 3.10. If you encounter issues installing it on other versions, please use Python 3.10.
-2.  **Tobii Pro SDK License**: The Tobii 4C is a consumer device. Accessing it via the `tobii-research` (Tobii Pro SDK) library requires a **Pro Upgrade** license from Tobii.
+1.  **Python 3.8+**: Compatible with Python 3.8, 3.9, 3.10, 3.11, 3.12, and newer versions.
+2.  **Tobii Core Software / Eye Tracking Service**: Tobii Core software or Eye Tracking Service installed on Windows (provides `tobii_stream_engine.dll`).
 3.  **Python Packages**:
     ```bash
     pip install -r requirements.txt
@@ -41,8 +43,9 @@ The script streams to the following addresses (standardized to snake_case):
 
 ## Troubleshooting
 
-- **"Could not find a version that satisfies the requirement tobii-research"**: This usually means your Python version is not supported by the available wheels on PyPI. Ensure you are using **Python 3.10**.
-- **"No Tobii eye trackers found"**:
-    - Ensure the Tobii Core/Eye Tracking software is running.
-    - Ensure the device is calibrated and active.
-    - Check if you have the required license for the Pro SDK.
+- **"Could not load tobii_stream_engine.dll"**:
+    - Ensure Tobii Core Software or Eye Tracking Service is installed.
+    - Verify `tobii_stream_engine.dll` is available in system PATH or Tobii installation folders.
+- **"No Tobii eye trackers found via Tobii Stream Engine API"**:
+    - Ensure Tobii Core software / Tobii Eye Tracking Service is running.
+    - Ensure the Tobii 4C tracker is plugged in and calibrated.
