@@ -3,7 +3,7 @@ import time
 import os
 import ctypes
 import ctypes.util
-from ctypes import c_int, c_uint32, c_int64, c_float, c_char_p, c_void_p, POINTER, Structure, CFUNCTYPE
+from ctypes import c_int, c_uint32, c_int64, c_float, c_char_p, c_void_p, POINTER, Structure, CFUNCTYPE, byref
 import traceback
 import json
 import math
@@ -230,7 +230,7 @@ class TobiiStreamEngineAPI:
             self.tobii_head_pose_unsubscribe.argtypes = [c_void_p]
             self.tobii_head_pose_unsubscribe.restype = c_int
 
-    def create_device(self, api_handle, url_bytes, dev_ptr_ref):
+    def create_device(self, api_handle, url_bytes, dev_ptr):
         if not self.raw_tobii_device_create:
             return TOBII_ERROR_NO_ERROR - 1
 
@@ -244,8 +244,8 @@ class TobiiStreamEngineAPI:
             try:
                 self.raw_tobii_device_create.argtypes = [c_void_p, c_char_p, POINTER(c_void_p)]
                 self.raw_tobii_device_create.restype = c_int
-                ret = self.raw_tobii_device_create(api_handle, u, dev_ptr_ref)
-                if ret == TOBII_ERROR_NO_ERROR and dev_ptr_ref.value:
+                ret = self.raw_tobii_device_create(api_handle, u, byref(dev_ptr))
+                if ret == TOBII_ERROR_NO_ERROR and dev_ptr.value:
                     return ret
                 attempts.append(f"3-param (url={'default' if u is None else u.decode('utf-8', 'ignore')}): code {ret} ({self.get_error_str(ret)})")
             except Exception as e:
@@ -255,8 +255,8 @@ class TobiiStreamEngineAPI:
             try:
                 self.raw_tobii_device_create.argtypes = [c_void_p, c_char_p, c_int, POINTER(c_void_p)]
                 self.raw_tobii_device_create.restype = c_int
-                ret = self.raw_tobii_device_create(api_handle, u, TobiiFieldOfUse.TOBII_FIELD_OF_USE_INTERACTIVE, dev_ptr_ref)
-                if ret == TOBII_ERROR_NO_ERROR and dev_ptr_ref.value:
+                ret = self.raw_tobii_device_create(api_handle, u, TobiiFieldOfUse.TOBII_FIELD_OF_USE_INTERACTIVE, byref(dev_ptr))
+                if ret == TOBII_ERROR_NO_ERROR and dev_ptr.value:
                     return ret
                 attempts.append(f"4-param INTERACTIVE (url={'default' if u is None else u.decode('utf-8', 'ignore')}): code {ret} ({self.get_error_str(ret)})")
             except Exception as e:
@@ -266,8 +266,8 @@ class TobiiStreamEngineAPI:
             try:
                 self.raw_tobii_device_create.argtypes = [c_void_p, c_char_p, c_int, POINTER(c_void_p)]
                 self.raw_tobii_device_create.restype = c_int
-                ret = self.raw_tobii_device_create(api_handle, u, TobiiFieldOfUse.TOBII_FIELD_OF_USE_DEFAULT, dev_ptr_ref)
-                if ret == TOBII_ERROR_NO_ERROR and dev_ptr_ref.value:
+                ret = self.raw_tobii_device_create(api_handle, u, TobiiFieldOfUse.TOBII_FIELD_OF_USE_DEFAULT, byref(dev_ptr))
+                if ret == TOBII_ERROR_NO_ERROR and dev_ptr.value:
                     return ret
                 attempts.append(f"4-param DEFAULT (url={'default' if u is None else u.decode('utf-8', 'ignore')}): code {ret} ({self.get_error_str(ret)})")
             except Exception as e:
@@ -564,7 +564,7 @@ def main():
             state.current_device_url = url
             dev_ptr = c_void_p()
 
-            ret = api.create_device(state.api_handle, url.encode('utf-8'), ctypes.byref(dev_ptr))
+            ret = api.create_device(state.api_handle, url.encode('utf-8'), dev_ptr)
 
             if ret != TOBII_ERROR_NO_ERROR or not dev_ptr:
                 err_desc = api.get_error_str(ret)
