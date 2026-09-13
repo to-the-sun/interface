@@ -3,42 +3,30 @@ import time
 import math
 import argparse
 
+# Windows Gaze Input API (winsdk)
 try:
-    import tobii_research as tr
+    import winsdk.windows.devices.input.preview as win_gaze_preview
+    HAS_WINSDK_GAZE = True
 except (ImportError, ModuleNotFoundError):
-    py_ver = f"{sys.version_info.major}.{sys.version_info.minor}.{sys.version_info.micro}"
-    print("=" * 72)
-    print("ERROR: Failed to import 'tobii_research'.")
-    print(f"Current Python version: {py_ver}")
-    print("\n'tobii-research' (Tobii Pro SDK) only provides pre-compiled wheels")
-    print("on PyPI for Python 3.10 (and 3.8) 64-bit.")
-    print("It does NOT support Python 3.11, 3.12, or newer versions.")
-    print("\nPlease ensure you are running Python 3.10 (64-bit):")
-    print("  1. Download Python 3.10: https://www.python.org/downloads/release/python-31011/")
-    print("  2. Install dependencies: py -3.10 -m pip install -r requirements.txt")
-    print("  3. Run script: py -3.10 tobii_osc.py")
-    print("=" * 72)
-    if sys.platform == "win32":
-        input("\nPress Enter to exit...")
-    sys.exit(1)
+    win_gaze_preview = None
+    HAS_WINSDK_GAZE = False
 
+# OSC library
 try:
     from pythonosc import udp_client
+    HAS_OSC = True
 except (ImportError, ModuleNotFoundError):
-    print("=" * 72)
-    print("ERROR: Failed to import 'pythonosc'.")
-    print("Please install required dependencies with:")
-    print("  pip install -r requirements.txt")
-    print("=" * 72)
-    if sys.platform == "win32":
-        input("\nPress Enter to exit...")
-    sys.exit(1)
+    udp_client = None
+    HAS_OSC = False
 
+# Mouse fallback controller
 try:
     from pynput.mouse import Controller as MouseController
     mouse_controller = MouseController()
+    HAS_PYNPUT = True
 except Exception:
     mouse_controller = None
+    HAS_PYNPUT = False
 
 # OSC Configuration
 DEFAULT_IP = "127.0.0.1"
@@ -84,166 +72,172 @@ def get_screen_size():
         pass
     return 1920, 1080
 
-def gaze_data_callback(gaze_data, client, move_mouse=True, screen_size=(1920, 1080), debug=False):
+def set_cursor_pos(px, py):
     """
-    Callback function that is called every time new gaze data is received.
-    Streams the data via OSC and optionally moves mouse cursor onscreen.
+    Sets system mouse cursor position using Windows SetCursorPos API (ctypes)
+    or pynput fallback.
+    """
+    if sys.platform == "win32":
+        try:
+            import ctypes
+            if ctypes.windll.user32.SetCursorPos(int(px), int(py)):
+                return True
+        except Exception:
+            pass
+    if mouse_controller is not None:
+        try:
+            mouse_controller.position = (int(px), int(py))
+            return True
+        except Exception:
+            pass
+    return False
+
+def run_windows_gaze(client, move_mouse=True, screen_size=(1920, 1080), debug=False):
+    """
+    Starts streaming gaze data using Microsoft's Windows.Devices.Input.Preview Gaze API.
+    Returns (gaze_source, token) or None on failure.
     """
     global stats
-    stats['total_frames'] += 1
+    if sys.platform != "win32":
+        print("ERROR: Windows Gaze Input API (Windows.Devices.Input.Preview) is only supported on Windows platform.")
+        return None
 
+    if not HAS_WINSDK_GAZE:
+        print("=" * 72)
+        print("ERROR: Failed to import 'winsdk'.")
+        print("Windows Gaze Input API requires the 'winsdk' package.")
+        print("Please install required dependencies with:")
+        print("  pip install winsdk python-osc pynput")
+        print("=" * 72)
+        return None
+
+    print("Initializing Microsoft Windows Gaze Input API (Windows.Devices.Input.Preview)...")
     try:
-        # Extract left and right gaze points on the display area (normalized 0.0 to 1.0)
-        try:
-            left_eye = gaze_data.left_gaze_point_on_display_area
-            right_eye = gaze_data.right_gaze_point_on_display_area
-        except (AttributeError, TypeError):
-            left_eye = gaze_data['left_gaze_point_on_display_area']
-            right_eye = gaze_data['right_gaze_point_on_display_area']
-
-        lx, ly = left_eye
-        rx, ry = right_eye
-
-        # Check for validity (NaN indicates the eye was not tracked)
-        valid_l = not (math.isnan(lx) or math.isnan(ly))
-        valid_r = not (math.isnan(rx) or math.isnan(ry))
-
-        if valid_l:
-            stats['valid_left'] += 1
-        if valid_r:
-            stats['valid_right'] += 1
-
-        avg_x = None
-        avg_y = None
-
-        if valid_l and valid_r:
-            stats['valid_avg'] += 1
-            # Calculate average gaze point
-            avg_x = (lx + rx) / 2.0
-            avg_y = (ly + ry) / 2.0
-
-            # Send average gaze (Normalized 0.0 to 1.0)
-            client.send_message("/Tobii/gaze_x", float(avg_x))
-            client.send_message("/Tobii/gaze_y", float(avg_y))
-
-            # Compatibility with OpenFace 3.0 / OpenFace Lite addresses
-            # OpenFace Lite expects approximate degrees.
-            # Map 0.5 center to 0, 0.0 to -30, 1.0 to 30.
-            # Note: Y is usually inverted in screen space (0 top, 1 bottom)
-            client.send_message("/OpenFace/gaze_left_right", float((avg_x - 0.5) * 60.0))
-            client.send_message("/OpenFace/gaze_up_down", float((avg_y - 0.5) * -60.0))
-        elif valid_l:
-            avg_x, avg_y = lx, ly
-        elif valid_r:
-            avg_x, avg_y = rx, ry
-
-        if valid_l:
-            client.send_message("/Tobii/left/gaze_x", float(lx))
-            client.send_message("/Tobii/left/gaze_y", float(ly))
-
-        if valid_r:
-            client.send_message("/Tobii/right/gaze_x", float(rx))
-            client.send_message("/Tobii/right/gaze_y", float(ry))
-
-        # Optional: Pupil Diameter
-        try:
-            lp = gaze_data.left_pupil_diameter
-            rp = gaze_data.right_pupil_diameter
-        except (AttributeError, TypeError):
-            lp = gaze_data.get('left_pupil_diameter', float('nan'))
-            rp = gaze_data.get('right_pupil_diameter', float('nan'))
-
-        if not math.isnan(lp):
-            client.send_message("/Tobii/left/pupil_diameter", float(lp))
-        if not math.isnan(rp):
-            client.send_message("/Tobii/right/pupil_diameter", float(rp))
-
-        stats['last_gaze_raw'] = (lx, ly, rx, ry)
-
-        # Move mouse cursor using gaze data
-        if move_mouse and mouse_controller is not None:
-            if avg_x is not None and avg_y is not None:
-                target_x = max(0.0, min(1.0, avg_x))
-                target_y = max(0.0, min(1.0, avg_y))
-                sw, sh = screen_size
-                px = int(target_x * sw)
-                py = int(target_y * sh)
-                stats['last_target_pixel'] = (px, py)
-                try:
-                    mouse_controller.position = (px, py)
-                    stats['mouse_moves'] += 1
-                except Exception as e:
-                    stats['mouse_errors'] += 1
-                    stats['last_error'] = f"Failed to set mouse position ({px}, {py}): {e}"
-                    if debug:
-                        print(f"[DEBUG Error] Mouse position failed: {e}")
-            else:
-                if debug and (stats['total_frames'] % 30 == 0):
-                    print(f"[DEBUG] Gaze callback received but coordinates are NaN/invalid. L: ({lx}, {ly}), R: ({rx}, {ry})")
-
-        if debug and (stats['total_frames'] % 30 == 0):
-            print(f"[DEBUG Frame {stats['total_frames']}] Left: ({lx:.3f}, {ly:.3f}), Right: ({rx:.3f}, {ry:.3f}), Avg: ({'N/A' if avg_x is None else f'{avg_x:.3f}'}, {'N/A' if avg_y is None else f'{avg_y:.3f}'}), Mouse Target: {stats.get('last_target_pixel')}")
+        gaze_source = win_gaze_preview.GazeInputSourcePreview.get_for_current_view()
+        if gaze_source is None:
+            print("ERROR: GazeInputSourcePreview.get_for_current_view() returned None.")
+            print("Ensure PCEye 5 / Gaze device is recognized by Windows and Eye Control is enabled in Settings.")
+            return None
 
     except Exception as e:
-        stats['last_error'] = f"Callback processing error: {e}"
-        if debug:
-            print(f"[DEBUG Error] Exception in gaze_data_callback: {e}")
+        err_msg = str(e)
+        if "0x80070490" in err_msg or "Element not found" in err_msg or "COMException" in type(e).__name__:
+            print("\n========================================================================")
+            print(" ERROR: Windows GazeInputSourcePreview returned 'Element Not Found' (0x80070490).")
+            print("========================================================================")
+            print(" Why this occurs:")
+            print(" 1. Windows Eye Control is currently toggled OFF.")
+            print(" 2. GetForCurrentView() requires an active Windows Eye Control session.")
+            print("\n Quick Fix Instructions:")
+            print("  A. Open Windows Settings -> Ease of Access -> Eye control.")
+            print("  B. Toggle 'Eye control' to ON.")
+            print("  C. Confirm the red gaze cursor appears on screen, then restart this app.")
+            print("========================================================================\n")
+        else:
+            print(f"Failed to initialize Windows Gaze Input API: {e}")
+        return None
+
+    def on_gaze_moved(sender, args):
+        global stats
+        stats['total_frames'] += 1
+        try:
+            cp = getattr(args, 'current_point', None)
+            if cp is None:
+                return
+
+            eye_pos = getattr(cp, 'point', None)
+            if eye_pos is None:
+                eye_pos = getattr(cp, 'eye_gaze_position_in_pixels', None)
+
+            if eye_pos is None:
+                if debug and (stats['total_frames'] % 30 == 0):
+                    print(f"[DEBUG Frame {stats['total_frames']}] Gaze moved but eye position is None.")
+                return
+
+            px = float(getattr(eye_pos, 'x', getattr(eye_pos, 'X', 0)))
+            py = float(getattr(eye_pos, 'y', getattr(eye_pos, 'Y', 0)))
+
+            sw, sh = screen_size
+            avg_x = max(0.0, min(1.0, px / sw)) if sw > 0 else 0.5
+            avg_y = max(0.0, min(1.0, py / sh)) if sh > 0 else 0.5
+
+            stats['valid_avg'] += 1
+            stats['valid_left'] += 1
+            stats['valid_right'] += 1
+            stats['last_gaze_raw'] = (avg_x, avg_y, avg_x, avg_y)
+
+            if client:
+                client.send_message("/Tobii/gaze_x", float(avg_x))
+                client.send_message("/Tobii/gaze_y", float(avg_y))
+                client.send_message("/OpenFace/gaze_left_right", float((avg_x - 0.5) * 60.0))
+                client.send_message("/OpenFace/gaze_up_down", float((avg_y - 0.5) * -60.0))
+
+            target_pixel = (int(px), int(py))
+            stats['last_target_pixel'] = target_pixel
+
+            if move_mouse:
+                if set_cursor_pos(px, py):
+                    stats['mouse_moves'] += 1
+                else:
+                    stats['mouse_errors'] += 1
+                    stats['last_error'] = f"Failed to set mouse position ({px}, {py})"
+
+            if debug and (stats['total_frames'] % 30 == 0):
+                print(f"[DEBUG Frame {stats['total_frames']}] WinGaze Pixel: ({px:.1f}, {py:.1f}), Avg: ({avg_x:.3f}, {avg_y:.3f}), Mouse Target: {target_pixel}")
+
+        except Exception as e:
+            stats['last_error'] = f"WinGaze Callback error: {e}"
+            if debug:
+                print(f"[DEBUG Error] Exception in WinGaze callback: {e}")
+
+    try:
+        token = gaze_source.add_gaze_moved(on_gaze_moved)
+        print("Subscribed to Windows Gaze Input API gaze_moved events.")
+        return (gaze_source, token)
+    except Exception as e:
+        print(f"Error subscribing to gaze_moved events: {e}")
+        return None
 
 def main():
-    parser = argparse.ArgumentParser(description='Stream Tobii PCEye 5 gaze data to OSC and control mouse cursor')
+    parser = argparse.ArgumentParser(description='Stream Windows Gaze Input API (PCEye 5) gaze data to OSC and control mouse cursor')
     parser.add_argument('--ip', type=str, default=DEFAULT_IP, help='OSC Destination IP (default: 127.0.0.1)')
     parser.add_argument('--port', type=int, default=DEFAULT_PORT, help='OSC Destination Port (default: 6731)')
     parser.add_argument('--no-mouse', action='store_true', help='Disable moving mouse cursor onscreen using gaze data')
     parser.add_argument('--debug', action='store_true', help='Enable verbose per-frame debug logging')
     args = parser.parse_args()
 
+    if not HAS_OSC:
+        print("=" * 72)
+        print("ERROR: Failed to import 'pythonosc'.")
+        print("Please install required dependencies with:")
+        print("  pip install -r requirements.txt")
+        print("=" * 72)
+        if sys.platform == "win32":
+            input("\nPress Enter to exit...")
+        sys.exit(1)
+
     client = udp_client.SimpleUDPClient(args.ip, args.port)
-
     move_mouse = not args.no_mouse
-    if move_mouse:
-        if mouse_controller is None:
-            print("[Warning] pynput mouse controller could not be initialized; mouse control disabled.")
-            move_mouse = False
-        else:
-            try:
-                curr_pos = mouse_controller.position
-                print(f"[Mouse Debug] pynput Mouse Controller active. Current cursor position: {curr_pos}")
-            except Exception as e:
-                print(f"[Mouse Debug] pynput initialized but getting position returned error: {e}")
-
     screen_size = get_screen_size()
 
-    print("Searching for Tobii eye trackers...")
-    try:
-        found_eyetrackers = tr.find_all_eyetrackers()
-    except Exception as e:
-        print(f"Error searching for eye trackers: {e}")
-        sys.exit(1)
-
-    if len(found_eyetrackers) == 0:
-        print("No Tobii eye trackers found!")
-        print("\nTroubleshooting:")
-        print("1. Ensure the Tobii Runtime (or TD Control for PCEye 5) is running.")
-        print("2. Check if the device is plugged in and calibrated.")
-        print("3. Note: The consumer 'Eye Tracker 5' is NOT supported by this SDK unless it has a Pro Upgrade.")
-        sys.exit(1)
-
-    eyetracker = found_eyetrackers[0]
-    print(f"--- Connected Device ---")
-    print(f"Model: {eyetracker.model}")
-    print(f"Serial: {eyetracker.serial_number}")
-    print(f"Address: {eyetracker.address}")
-    print(f"------------------------")
-    print(f"Streaming gaze data to {args.ip}:{args.port}...")
+    print("=== Microsoft Windows Gaze Input API (Windows.Devices.Input.Preview) Mode ===")
     if move_mouse:
-        print(f"Mouse cursor movement: ENABLED (Screen resolution: {screen_size[0]}x{screen_size[1]})")
+        print(f"[Mouse Control] Mouse control enabled (SetCursorPos). Target resolution: {screen_size[0]}x{screen_size[1]}")
     else:
-        print("Mouse cursor movement: DISABLED")
-    print("Press Ctrl+C to stop.")
+        print("[Mouse Control] Mouse control disabled.")
 
-    # Subscribe to gaze data
-    eyetracker.subscribe_to(tr.EYETRACKER_GAZE_DATA,
-                            lambda x: gaze_data_callback(x, client, move_mouse=move_mouse, screen_size=screen_size, debug=args.debug))
+    win_gaze_handle = run_windows_gaze(client, move_mouse=move_mouse, screen_size=screen_size, debug=args.debug)
+    if win_gaze_handle is None:
+        print("\nFailed to initialize Windows Gaze Input API.")
+        print("Troubleshooting:")
+        print("1. Ensure Windows 10/11 is running with an eye tracker registered as a gaze device.")
+        print("2. Verify Eye Tracking permission under Windows Settings -> Privacy & Security -> Eye tracker.")
+        if sys.platform == "win32":
+            input("\nPress Enter to exit...")
+        sys.exit(1)
+
+    print(f"Streaming gaze data to {args.ip}:{args.port}...")
+    print("Press Ctrl+C to stop.")
 
     print("\n--- Diagnostic & Heartbeat Monitor Active ---")
     if args.debug:
@@ -263,17 +257,12 @@ def main():
             last_stat_time = now
             last_frame_count = stats['total_frames']
 
-            print(f"[STATUS] Frames: {stats['total_frames']} ({fps:.1f} fps) | Valid L: {stats['valid_left']} | Valid R: {stats['valid_right']} | Valid Avg: {stats['valid_avg']} | Mouse Moves: {stats['mouse_moves']}")
+            print(f"[STATUS] Windows Gaze API | Frames: {stats['total_frames']} ({fps:.1f} fps) | Valid Avg: {stats['valid_avg']} | Mouse Moves: {stats['mouse_moves']}")
             if stats['total_frames'] == 0:
-                print("  -> WARNING: No gaze data callbacks received yet from Tobii eye tracker.")
-                print("     Ensure TD Control / Tobii Service is running and the PCEye 5 is connected.")
-            elif stats['valid_avg'] == 0:
-                print("  -> WARNING: Gaze callbacks ARE running, but gaze coordinates are NaN.")
-                print("     Ensure you are sitting within range (18-30 inches) and calibrated in TD Control.")
+                print("  -> WARNING: No gaze data callbacks received yet from Windows Gaze Input API.")
+                print("     Ensure PCEye 5 is registered and permitted under Windows Eye Tracker settings.")
             elif move_mouse and stats['mouse_moves'] == 0:
                 print("  -> WARNING: Valid gaze data received, but mouse moved 0 times.")
-                if mouse_controller is None:
-                    print("     Reason: pynput mouse controller is None.")
                 if stats['last_error']:
                     print(f"     Reason: {stats['last_error']}")
             if stats['last_error']:
@@ -282,8 +271,13 @@ def main():
     except KeyboardInterrupt:
         print("\nStopping...")
     finally:
-        eyetracker.unsubscribe_from(tr.EYETRACKER_GAZE_DATA)
-        print("Successfully unsubscribed from eye tracker.")
+        if win_gaze_handle is not None:
+            try:
+                gaze_src, token = win_gaze_handle
+                gaze_src.remove_gaze_moved(token)
+                print("Successfully unsubscribed from Windows Gaze Input API.")
+            except Exception:
+                pass
 
 if __name__ == "__main__":
     try:

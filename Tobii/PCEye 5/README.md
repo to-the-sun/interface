@@ -1,89 +1,85 @@
-# Tobii PCEye 5 to OSC Streamer & Mouse Control
+# Tobii PCEye 5 - Windows Gaze Input API to OSC Streamer & Mouse Control
 
-This tool streams real-time gaze data from a **Tobii Dynavox PCEye 5** (or **Tobii Pro** devices) to Open Sound Control (OSC) and moves the onscreen mouse cursor based on gaze position by default.
+This project streams real-time gaze data from a **Tobii Dynavox PCEye 5** (or compatible Windows gaze input devices) to Open Sound Control (OSC) and moves the onscreen mouse cursor continuously using Microsoft's native **Windows Gaze Input API** (`Windows.Devices.Input.Preview`) and Windows `SetCursorPos`.
 
----
-
-## Brand New PCEye 5 Out-of-the-Box Setup Guide
-
-Follow these exact step-by-step instructions to set up your brand new Tobii PCEye 5 from unboxing to streaming and mouse control.
-
-### Step 1: Hardware Setup & Mounting
-
-1. **Unbox the PCEye 5**: Remove the PCEye 5 tracker bar, USB extension cable (if included), and magnetic mounting plates from the box.
-2. **Mount the Bracket**:
-   - Clean the bottom bezel of your computer monitor or laptop screen (directly below the display area).
-   - Peel off the protective adhesive strip from the magnetic mounting plate.
-   - Firmly press the mounting plate onto the center of the bottom screen bezel for at least 30 seconds.
-3. **Attach the Device**:
-   - Snap the PCEye 5 bar onto the magnetic mounting bracket. Ensure the dual infrared cameras and illuminators face toward your seating position.
-4. **Connect USB**:
-   - Plug the USB-A cable directly into a powered USB 2.0 or USB 3.0 port on your computer. Avoid unpowered USB hubs to ensure sufficient power supply.
+Both **C# (.NET 8 WinForms)** and **Python (`winsdk`)** implementations are provided in this folder.
 
 ---
 
-### Step 2: Tobii Software & Driver Installation
+## Windows Eye Control & Driver Setup Guide
 
-1. **Download TD Control**:
-   - Visit the official Tobii Dynavox support website: [https://www.tobiidynavox.com/](https://www.tobiidynavox.com/)
-   - Navigate to **Support & Downloads** and download **TD Control** (or **PCEye Software / Tobii Eye Tracking**).
-2. **Install the Software**:
-   - Run the downloaded installer (`TDControl_Setup.exe` or equivalent).
-   - Follow the onscreen prompts to complete the installation. This automatically installs required Windows drivers and the **Tobii Service / Runtime**.
-3. **Verify Device Recognition**:
-   - Once installed, check that the status light on the PCEye 5 is illuminated.
+You **cannot manually register** an eye tracker as a Windows gaze device. The manufacturer's driver/software must expose it to Windows through the Windows Eye Control / gaze-input interface.
+
+### Step 1: Install Official PCEye 5 Software & Driver
+
+1. Disconnect the PCEye 5 USB cable if prompted by the installer.
+2. Download the official **PCEye 5 Software Installer** (includes **TD Control**) from Tobii Dynavox:
+   - [PCEye 5 Software Installer](https://www.mytobiidynavox.com/Support/pceyecc)
+3. Run `TDControl_Setup.exe` and approve the UAC prompt.
+4. Finish installation and plug the PCEye 5 directly into a powered USB port (avoid unpowered USB hubs).
+
+### Step 2: Confirm Device Detection in TD Control
+
+1. Launch **TD Control** from the Windows Start menu.
+2. Confirm live eye tracking status and complete full eye calibration in your normal seated position (18–30 inches from monitor).
+
+### Step 3: Enable Windows Eye Control & Run Diagnostic Test
+
+1. Open **Windows Settings** (`Win + I`).
+2. Go to **Ease of Access** -> **Eye control** (left sidebar).
+3. Toggle **Eye control** to **On**.
+4. Observe the screen:
+   - **Result A**: A **moving red dot** appears following your gaze. This proves Windows is receiving live gaze input from the PCEye 5!
+   - **Result B**: Eye control is grayed out or reports no compatible device.
+
+#### Diagnostic Outcomes
+
+| What You See | What It Means | Next Step |
+| :--- | :--- | :--- |
+| **Eye control turns on & red dot moves** | Windows receives live gaze input | Run `run_tobii.bat` to launch continuous `SetCursorPos` mouse streamer |
+| **Eye control says no compatible device** | Driver does not publish to Windows Gaze API | Ensure TD Control is installed and calibrated |
+| **No Eye control setting page** | Windows edition/version missing component | Update Windows 10/11 |
 
 ---
 
-### Step 3: Display Configuration & Calibration
+## Understanding `0x80070490` (Element Not Found) & `gazeInput` Capability
 
-1. **Configure Screen Display**:
-   - Open **TD Control** or **Tobii PCEye Settings**.
-   - Select **Display Setup** and choose the screen/monitor on which the PCEye 5 is mounted.
-2. **Perform Eye Calibration**:
-   - Click **Calibrate** in the software.
-   - Sit in a comfortable position about 45–75 cm (18–30 inches) away from the monitor.
-   - Ensure your eyes are positioned within the guide box shown on screen.
-   - Follow the on-screen calibration target as it moves across various calibration points on the display.
-   - Save the calibration profile when prompted.
+The WinRT API `Windows.Devices.Input.Preview.GazeInputSourcePreview` requires two conditions:
+1. **Active UI View Context**: A UI thread window (handled automatically by our WinForms UI application).
+2. **Package Identity with `gazeInput` Capability**: Microsoft restricts gaze API access to applications that declare the `<DeviceCapability Name="gazeInput" />` in an app manifest (`Package.appxmanifest`).
+
+`run_tobii.bat` automatically registers the package manifest via `register_gaze_capability.ps1` on launch.
 
 ---
 
-### Step 4: Running the OSC Streamer & Mouse Control
+## How to Run
 
-#### Quick Start (Automated Environment)
-Simply double-click or run the batch script on Windows:
+### Quick Start (Double-Click Batch Script)
+Simply double-click or run:
 ```cmd
 run_tobii.bat
 ```
-`run_tobii.bat` automatically:
-- Checks for or downloads an isolated portable **Python 3.10 64-bit** environment (`py310_env`).
-- Installs all required dependencies (`tobii-research`, `python-osc`, `pynput`).
-- Launches `tobii_osc.py` with default mouse cursor movement and OSC streaming.
+`run_tobii.bat` will:
+1. Automatically register the app manifest (`Package.appxmanifest`) declaring `<DeviceCapability Name="gazeInput" />`.
+2. Automatically build and run the high-performance **C# application** (`Program.cs`) if `.NET SDK` is installed.
+3. Automatically fallback to the **Python environment** (`tobii_osc.py` using `winsdk`) if `.NET SDK` is not installed.
 
-#### Manual Execution
-If running manually with Python 3.10:
+### Manual C# (.NET 8) Execution
+```cmd
+powershell -ExecutionPolicy Bypass -File register_gaze_capability.ps1
+dotnet run -c Release
+```
+
+### Manual Python Execution
 ```bash
-# 1. Install required dependencies
-py -3.10 -m pip install -r requirements.txt
-
-# 2. Run script with default options (OSC streaming + Onscreen Mouse Control)
-py -3.10 tobii_osc.py
+pip install -r requirements.txt
+python tobii_osc.py
 ```
 
 ---
 
-## Features & Options
+## Features & Command-Line Arguments
 
-### Onscreen Mouse Cursor Control
-* **Enabled by Default**: The script converts normalized gaze coordinates into screen pixels and moves the Windows/system mouse cursor to where you are looking.
-* **Disable Mouse Control**: If you only want to stream OSC data without moving the mouse cursor, pass the `--no-mouse` flag:
-  ```bash
-  py -3.10 tobii_osc.py --no-mouse
-  ```
-  *(Or edit `run_tobii.bat` to append `--no-mouse` to the command line call).*
-
-### Command-Line Arguments
 | Option | Default | Description |
 | :--- | :--- | :--- |
 | `--ip` | `127.0.0.1` | OSC Destination IP address |
@@ -94,36 +90,7 @@ py -3.10 tobii_osc.py
 
 ## OSC Message Mapping
 
-The script streams data to the following OSC addresses:
-
-### Primary Gaze (Average of both eyes)
 * `/Tobii/gaze_x`: Horizontal gaze position (0.0 = Left edge, 1.0 = Right edge)
 * `/Tobii/gaze_y`: Vertical gaze position (0.0 = Top edge, 1.0 = Bottom edge)
-
-### OpenFace 3.0 / OpenFace Lite Compatibility
-To maintain compatibility with OpenFace receivers, the script sends:
 * `/OpenFace/gaze_left_right`: Approximate gaze angle in degrees (-30 to 30)
 * `/OpenFace/gaze_up_down`: Approximate gaze angle in degrees (-30 to 30)
-
-### Per-Eye Data
-* `/Tobii/left/gaze_x`, `/Tobii/left/gaze_y`: Normalized gaze coordinates for left eye.
-* `/Tobii/right/gaze_x`, `/Tobii/right/gaze_y`: Normalized gaze coordinates for right eye.
-* `/Tobii/left/pupil_diameter`: Pupil diameter in mm (if available).
-* `/Tobii/right/pupil_diameter`: Pupil diameter in mm (if available).
-
----
-
-## Troubleshooting
-
-* **"No Tobii eye trackers found"**:
-  1. Ensure the PCEye 5 USB cable is plugged directly into your PC.
-  2. Verify that **TD Control** or **Tobii Service** is running in the system tray.
-  3. Ensure the eye tracker is calibrated in TD Control before launching the script.
-* **"Could not find a version that satisfies the requirement tobii-research"**:
-  * The `tobii-research` SDK only provides pre-compiled Python wheels for **Python 3.10** (and 3.8) 64-bit. Python 3.11, 3.12, 3.13+ are NOT supported by Tobii's PyPI package.
-  * **Solution**: Run `run_tobii.bat`. It will create an isolated portable Python 3.10 environment automatically.
-* **Consumer Tobii Eye Tracker 5 vs PCEye 5**:
-  * **PCEye 5 (Dynavox)**: Fully supported out of the box (includes Tobii Pro license).
-  * **Tobii Eye Tracker 5 (Consumer/Gaming)**: Not natively supported by the Tobii Pro SDK unless unlocked with a Pro Upgrade license.
-* **Mouse Cursor Alignment Issues**:
-  * Ensure Windows display scaling (DPI) matches your screen resolution, or recalibrate inside TD Control.
