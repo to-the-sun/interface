@@ -2,6 +2,7 @@ import sys
 import time
 import os
 import ctypes
+import ctypes.util
 from ctypes import c_int, c_uint32, c_int64, c_float, c_char_p, c_void_p, POINTER, Structure, CFUNCTYPE
 import traceback
 import json
@@ -90,36 +91,49 @@ def load_tobii_stream_engine():
         r"C:\Program Files (x86)\Tobii\Tobii Eye Tracker Core Software",
         r"C:\Program Files\Tobii\Tobii Core Software",
         r"C:\Program Files (x86)\Tobii\Tobii Core Software",
+        r"C:\Program Files\Tobii\Tobii Service",
+        r"C:\Program Files (x86)\Tobii\Tobii Service",
     ]
+
+    last_errors = []
 
     for d in search_dirs:
         for name in lib_names:
             full_path = os.path.join(d, name)
             if os.path.exists(full_path):
-                try:
-                    if hasattr(os, "add_dll_directory") and sys.platform == "win32":
+                if sys.platform == "win32":
+                    if hasattr(os, "add_dll_directory"):
                         try:
                             os.add_dll_directory(d)
                         except Exception:
                             pass
+                    # Add directory to PATH so dependent DLLs can be located
+                    if d not in os.environ.get("PATH", "").split(os.path.pathsep):
+                        os.environ["PATH"] = d + os.path.pathsep + os.environ.get("PATH", "")
+
+                try:
                     return ctypes.CDLL(full_path)
-                except Exception:
-                    pass
+                except Exception as err:
+                    last_errors.append(f"Found '{full_path}' but failed to load: {err}")
 
     # Try standard system load
     for name in lib_names:
         try:
             return ctypes.CDLL(name)
-        except Exception:
-            pass
+        except Exception as err:
+            last_errors.append(f"System load '{name}' failed: {err}")
 
-    import ctypes.util
     found_lib = ctypes.util.find_library("tobii_stream_engine")
     if found_lib:
         try:
             return ctypes.CDLL(found_lib)
-        except Exception:
-            pass
+        except Exception as err:
+            last_errors.append(f"find_library '{found_lib}' failed to load: {err}")
+
+    if last_errors:
+        print("\nDLL Loader Diagnostic Log:")
+        for err in last_errors:
+            print(f" - {err}")
 
     return None
 
@@ -403,9 +417,11 @@ def main():
         if not raw_lib:
             print("=" * 72)
             print("ERROR: Could not load 'tobii_stream_engine.dll' (or system equivalent).")
-            print("\nPlease ensure Tobii Eye Tracking Service / Stream Engine is installed:")
-            print("  1. Download and install Tobii Experience or Tobii Core Software.")
-            print("  2. Verify 'tobii_stream_engine.dll' is present in system PATH or program folder.")
+            print("\nTroubleshooting Guidance:")
+            print("  1. Check architecture match: Python bitness must match the DLL bitness.")
+            print(f"     Current Python process architecture: {struct_calcsize_bits()}-bit")
+            print("  2. Ensure Tobii Eye Tracking Service / Stream Engine is installed.")
+            print("  3. Check DLL Loader Diagnostic Log printed above for the exact error reason.")
             print("=" * 72)
             if sys.platform == "win32":
                 input("\nPress Enter to exit...")
@@ -607,6 +623,10 @@ def main():
         traceback.print_exc()
         if sys.platform == "win32":
             input("\nPress Enter to close...")
+
+def struct_calcsize_bits():
+    import struct
+    return struct.calcsize("P") * 8
 
 if __name__ == "__main__":
     main()
