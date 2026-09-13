@@ -95,7 +95,7 @@ def elevate_privileges():
             print(f"[!] UAC Elevation failed: {e}")
             print("[*] Continuing without administrator privileges...")
 
-def send_tobii_toggle(host="127.0.0.1", port=9003, timeout=1.0):
+def send_tobii_toggle(host="127.0.0.1", port=10003, timeout=1.0):
     """
     Sends a toggle command over TCP to the Tobii 4C OSC script.
     """
@@ -155,7 +155,7 @@ class MidiInputController:
     """
     Processes incoming MIDI messages and triggers actions according to defined rules.
     """
-    def __init__(self, mouse_controller, keyboard_controller, is_frozen_func, tobii_host="127.0.0.1", tobii_tcp_port=9003, send_tobii_toggle_func=None):
+    def __init__(self, mouse_controller, keyboard_controller, is_frozen_func, tobii_host="127.0.0.1", tobii_tcp_port=10003, send_tobii_toggle_func=None):
         self.mouse = mouse_controller
         self.keyboard = keyboard_controller
         self.is_frozen_func = is_frozen_func
@@ -325,7 +325,7 @@ def run_script():
     parser.add_argument("--port", type=str, default=None, help="Name of the MIDI port to connect to directly.")
     parser.add_argument("--threshold", type=float, default=1.0, help="Time in seconds of no movement to consider mouse frozen (default: 1.0s).")
     parser.add_argument("--tobii-host", type=str, default="127.0.0.1", help="IP address of the Tobii 4C TCP server (default: 127.0.0.1).")
-    parser.add_argument("--tobii-tcp-port", type=int, default=9003, help="TCP port of the Tobii 4C OSC script (default: 9003).")
+    parser.add_argument("--tobii-tcp-port", type=int, default=10003, help="TCP port of the Tobii 4C OSC script (default: 10003).")
     parser.add_argument("--no-elevate", action="store_true", help="Do not attempt to automatically elevate privileges to Administrator on Windows.")
     args = parser.parse_args()
 
