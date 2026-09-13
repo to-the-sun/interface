@@ -174,11 +174,8 @@ class TobiiStreamEngineAPI:
             self.tobii_enumerate_local_device_urls.argtypes = [c_void_p, tobii_url_receiver_t, c_void_p]
             self.tobii_enumerate_local_device_urls.restype = c_int
 
-        # tobii_device_create (takes field_of_use enum as 3rd parameter)
-        self.tobii_device_create = getattr(self.lib, "tobii_device_create", None)
-        if self.tobii_device_create:
-            self.tobii_device_create.argtypes = [c_void_p, c_char_p, c_int, POINTER(c_void_p)]
-            self.tobii_device_create.restype = c_int
+        # tobii_device_create raw reference
+        self.raw_tobii_device_create = getattr(self.lib, "tobii_device_create", None)
 
         # tobii_device_destroy
         self.tobii_device_destroy = getattr(self.lib, "tobii_device_destroy", None)
@@ -227,6 +224,40 @@ class TobiiStreamEngineAPI:
         if self.tobii_head_pose_unsubscribe:
             self.tobii_head_pose_unsubscribe.argtypes = [c_void_p]
             self.tobii_head_pose_unsubscribe.restype = c_int
+
+    def create_device(self, api_handle, url_bytes, dev_ptr_ref):
+        if not self.raw_tobii_device_create:
+            return TOBII_ERROR_NO_ERROR - 1
+
+        # 1. Try 3-parameter signature: (api_handle, url_bytes, byref(dev_ptr))
+        try:
+            self.raw_tobii_device_create.argtypes = [c_void_p, c_char_p, POINTER(c_void_p)]
+            self.raw_tobii_device_create.restype = c_int
+            ret = self.raw_tobii_device_create(api_handle, url_bytes, dev_ptr_ref)
+            if ret == TOBII_ERROR_NO_ERROR and dev_ptr_ref.value:
+                return ret
+        except Exception:
+            pass
+
+        # 2. Try 4-parameter signature with TOBII_FIELD_OF_USE_INTERACTIVE
+        try:
+            self.raw_tobii_device_create.argtypes = [c_void_p, c_char_p, c_int, POINTER(c_void_p)]
+            self.raw_tobii_device_create.restype = c_int
+            ret = self.raw_tobii_device_create(api_handle, url_bytes, TobiiFieldOfUse.TOBII_FIELD_OF_USE_INTERACTIVE, dev_ptr_ref)
+            if ret == TOBII_ERROR_NO_ERROR and dev_ptr_ref.value:
+                return ret
+        except Exception:
+            pass
+
+        # 3. Try 4-parameter signature with TOBII_FIELD_OF_USE_DEFAULT
+        try:
+            self.raw_tobii_device_create.argtypes = [c_void_p, c_char_p, c_int, POINTER(c_void_p)]
+            self.raw_tobii_device_create.restype = c_int
+            ret = self.raw_tobii_device_create(api_handle, url_bytes, TobiiFieldOfUse.TOBII_FIELD_OF_USE_DEFAULT, dev_ptr_ref)
+            return ret
+        except Exception as e:
+            print(f"Exception invoking tobii_device_create: {e}")
+            return -1
 
     def get_error_str(self, err_code):
         if self.tobii_error_message:
@@ -513,10 +544,7 @@ def main():
             state.current_device_url = url
             dev_ptr = c_void_p()
 
-            # Try interactive field of use first, fallback to default field of use
-            ret = api.tobii_device_create(state.api_handle, url.encode('utf-8'), TobiiFieldOfUse.TOBII_FIELD_OF_USE_INTERACTIVE, ctypes.byref(dev_ptr))
-            if ret != TOBII_ERROR_NO_ERROR or not dev_ptr:
-                ret = api.tobii_device_create(state.api_handle, url.encode('utf-8'), TobiiFieldOfUse.TOBII_FIELD_OF_USE_DEFAULT, ctypes.byref(dev_ptr))
+            ret = api.create_device(state.api_handle, url.encode('utf-8'), ctypes.byref(dev_ptr))
 
             if ret != TOBII_ERROR_NO_ERROR or not dev_ptr:
                 err_desc = api.get_error_str(ret)
