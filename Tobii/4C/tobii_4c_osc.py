@@ -440,16 +440,6 @@ def get_screen_size():
         pass
     return 1920, 1080
 
-def is_mouse_button_down():
-    """Checks if left or right mouse button is held down to prevent gaze movements from disrupting dragging."""
-    if sys.platform == "win32":
-        try:
-            # VK_LBUTTON = 0x01, VK_RBUTTON = 0x02
-            return bool((ctypes.windll.user32.GetAsyncKeyState(0x01) & 0x8000) or (ctypes.windll.user32.GetAsyncKeyState(0x02) & 0x8000))
-        except Exception:
-            pass
-    return False
-
 def set_cursor_pos(px, py):
     """
     Sets system mouse cursor position using Windows SendInput API (ctypes),
@@ -500,11 +490,6 @@ def set_cursor_pos(px, py):
 def move_cursor_to_gaze(gx, gy):
     if not state.move_mouse or math.isnan(gx) or math.isnan(gy):
         return False
-
-    # Suppress gaze movement while user is actively holding a mouse button down to drag
-    if is_mouse_button_down():
-        return False
-
     sw, sh = state.screen_size
     target_x = max(0.0, min(1.0, float(gx))) * sw
     target_y = max(0.0, min(1.0, float(gy))) * sh
