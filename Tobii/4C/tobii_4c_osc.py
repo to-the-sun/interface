@@ -33,6 +33,27 @@ try:
 except Exception:
     mouse_controller = None
 
+# Windows SendInput structures for synthetic mouse input injection
+if sys.platform == "win32":
+    class MOUSEINPUT(Structure):
+        _fields_ = [
+            ("dx", c_int),
+            ("dy", c_int),
+            ("mouseData", c_uint32),
+            ("dwFlags", c_uint32),
+            ("time", c_uint32),
+            ("dwExtraInfo", c_void_p),
+        ]
+
+    class INPUT_UNION(ctypes.Union):
+        _fields_ = [("mi", MOUSEINPUT)]
+
+    class INPUT(Structure):
+        _fields_ = [
+            ("type", c_uint32),
+            ("union", INPUT_UNION),
+        ]
+
 # --- Tobii Stream Engine C API Definitions ---
 TOBII_ERROR_NO_ERROR = 0
 
@@ -419,14 +440,51 @@ def get_screen_size():
         pass
     return 1920, 1080
 
+def is_mouse_button_down():
+    """Checks if left or right mouse button is held down to prevent gaze movements from disrupting dragging."""
+    if sys.platform == "win32":
+        try:
+            # VK_LBUTTON = 0x01, VK_RBUTTON = 0x02
+            return bool((ctypes.windll.user32.GetAsyncKeyState(0x01) & 0x8000) or (ctypes.windll.user32.GetAsyncKeyState(0x02) & 0x8000))
+        except Exception:
+            pass
+    return False
+
 def set_cursor_pos(px, py):
     """
-    Sets system mouse cursor position using Windows SetCursorPos API (ctypes)
-    or pynput fallback.
+    Sets system mouse cursor position using Windows SendInput API (ctypes),
+    SetCursorPos API, or pynput fallback.
     """
     if sys.platform == "win32":
         try:
-            import ctypes
+            INPUT_MOUSE = 0
+            MOUSEEVENTF_MOVE = 0x0001
+            MOUSEEVENTF_ABSOLUTE = 0x8000
+
+            sw, sh = state.screen_size
+            if sw > 1 and sh > 1:
+                norm_x = int(round(px * 65535.0 / (sw - 1)))
+                norm_y = int(round(py * 65535.0 / (sh - 1)))
+                norm_x = max(0, min(65535, norm_x))
+                norm_y = max(0, min(65535, norm_y))
+
+                inp = INPUT()
+                inp.type = INPUT_MOUSE
+                inp.union.mi = MOUSEINPUT(
+                    dx=norm_x,
+                    dy=norm_y,
+                    mouseData=0,
+                    dwFlags=MOUSEEVENTF_MOVE | MOUSEEVENTF_ABSOLUTE,
+                    time=0,
+                    dwExtraInfo=None
+                )
+                sent = ctypes.windll.user32.SendInput(1, byref(inp), ctypes.sizeof(INPUT))
+                if sent > 0:
+                    return True
+        except Exception:
+            pass
+
+        try:
             if ctypes.windll.user32.SetCursorPos(int(px), int(py)):
                 return True
         except Exception:
@@ -442,6 +500,11 @@ def set_cursor_pos(px, py):
 def move_cursor_to_gaze(gx, gy):
     if not state.move_mouse or math.isnan(gx) or math.isnan(gy):
         return False
+
+    # Suppress gaze movement while user is actively holding a mouse button down to drag
+    if is_mouse_button_down():
+        return False
+
     sw, sh = state.screen_size
     target_x = max(0.0, min(1.0, float(gx))) * sw
     target_y = max(0.0, min(1.0, float(gy))) * sh
