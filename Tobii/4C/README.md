@@ -53,7 +53,7 @@ python tobii_4c_osc.py
 | Argument | Default | Description |
 | :--- | :--- | :--- |
 | `--ip` | `127.0.0.1` | Destination IP address for OSC messages |
-| `--port` | `9002` | Destination UDP port for OSC messages |
+| `--port` | `6733` | Destination UDP port for OSC messages |
 | `--tcp-port` | `10003` | Port for the background TCP command server |
 | `--no-mouse` | `False` | Disable automatic gaze-based mouse cursor movement on launch |
 | `--no-elevate` | `False` | Disable automatic Windows UAC Administrator elevation request |
@@ -95,7 +95,7 @@ $client.Close()
 
 ## OSC Message Mapping
 
-OSC messages are streamed over UDP to `127.0.0.1:9002` by default (addresses mirror MediaPipe OSC formatting):
+OSC messages are streamed over UDP to `127.0.0.1:6733` by default (addresses mirror MediaPipe OSC formatting):
 
 ### Head Pose
 | Address | Data Range / Unit | Description |

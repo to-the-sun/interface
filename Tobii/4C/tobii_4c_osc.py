@@ -378,7 +378,7 @@ def minimize_gui_window(win_name):
 
 # --- Configuration ---
 OSC_IP = "127.0.0.1"
-OSC_PORT = 9002
+OSC_PORT = 6733
 TCP_PORT = 10003
 CONFIG_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "checkbox_states_tobii.json")
 
