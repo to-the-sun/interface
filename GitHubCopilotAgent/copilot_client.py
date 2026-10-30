@@ -28,6 +28,7 @@ class CopilotClient:
         self.copilot_token: Optional[str] = None
         self.copilot_expires_at: int = 0
         self.copilot_endpoints: Dict[str, str] = {}
+        self.pending_device_flow: Optional[Dict[str, Any]] = None
 
     def _find_github_token(self) -> Optional[str]:
         """Attempt to retrieve GitHub token from env, gh CLI, or credentials file."""
@@ -66,8 +67,8 @@ class CopilotClient:
 
         return None
 
-    def device_flow_authenticate(self) -> str:
-        """Perform GitHub OAuth Device Flow authentication if no token is found."""
+    def start_device_flow(self) -> Dict[str, Any]:
+        """Initiate GitHub OAuth Device Flow and return user_code & verification_uri."""
         req_data = json.dumps({"client_id": CLIENT_ID, "scope": "read:user"}).encode("utf-8")
         req = urllib.request.Request(
             "https://github.com/login/device/code",
@@ -80,8 +81,14 @@ class CopilotClient:
         try:
             with urllib.request.urlopen(req) as resp:
                 res = json.loads(resp.read().decode("utf-8"))
+                self.pending_device_flow = res
+                return res
         except Exception as e:
             raise CopilotAuthError(f"Failed to initiate device flow: {e}")
+
+    def device_flow_authenticate(self) -> str:
+        """Perform GitHub OAuth Device Flow authentication blocking loop."""
+        res = self.start_device_flow() if not self.pending_device_flow else self.pending_device_flow
 
         device_code = res["device_code"]
         user_code = res["user_code"]
@@ -119,6 +126,7 @@ class CopilotClient:
             if "access_token" in poll_res:
                 token = poll_res["access_token"]
                 self.github_token = token
+                self.pending_device_flow = None
                 # Save to credentials.json
                 try:
                     with open("credentials.json", "w", encoding="utf-8") as f:
@@ -160,7 +168,6 @@ class CopilotClient:
                 return self.copilot_token
         except urllib.error.HTTPError as e:
             if e.code in (401, 403):
-                # Try bearer token header
                 req = urllib.request.Request(
                     "https://api.github.com/copilot_internal/v2/token",
                     headers={
@@ -192,7 +199,6 @@ class CopilotClient:
         """Send chat completion request to GitHub Copilot API with streaming yield."""
         token = self.ensure_copilot_token()
 
-        # Endpoint
         base_url = self.copilot_endpoints.get("api", "https://api.individual.githubcopilot.com")
         if not base_url.endswith("/"):
             base_url += "/"

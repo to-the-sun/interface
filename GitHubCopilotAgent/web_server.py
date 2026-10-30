@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 Web Server for Jules GitHub Copilot Agent.
-Provides REST and SSE endpoints for real-time Web UI streaming.
+Provides REST and SSE endpoints for real-time Web UI streaming and auth management.
 """
 
 import os
@@ -12,7 +12,7 @@ import socketserver
 import urllib.parse
 from typing import Dict, Any
 
-from .copilot_client import CopilotClient
+from .copilot_client import CopilotClient, CopilotAuthError
 from .agent_engine import JulesAgentEngine
 
 STATIC_DIR = os.path.join(os.path.dirname(__file__), "static")
@@ -37,6 +37,22 @@ class JulesWebHandler(http.server.BaseHTTPRequestHandler):
                     self.wfile.write(f.read())
             else:
                 self.send_error(404, "Index file not found")
+        elif path == "/api/auth/status":
+            self.send_response(200)
+            self.send_header("Content-Type", "application/json")
+            self.end_headers()
+            has_token = bool(JulesWebHandler.agent_engine.client.github_token)
+            resp = {"authenticated": has_token}
+            if not has_token:
+                try:
+                    df = JulesWebHandler.agent_engine.client.start_device_flow()
+                    resp["device_flow"] = {
+                        "user_code": df["user_code"],
+                        "verification_uri": df["verification_uri"]
+                    }
+                except Exception as e:
+                    resp["error"] = str(e)
+            self.wfile.write(json.dumps(resp).encode("utf-8"))
         else:
             self.send_error(404, "Not Found")
 
@@ -68,6 +84,10 @@ class JulesWebHandler(http.server.BaseHTTPRequestHandler):
                     self.wfile.flush()
                 self.wfile.write(b"data: [DONE]\n\n")
                 self.wfile.flush()
+            except CopilotAuthError as e:
+                err_event = json.dumps({"type": "error", "message": f"Authentication required: {e}"})
+                self.wfile.write(f"data: {err_event}\n\n".encode('utf-8'))
+                self.wfile.flush()
             except Exception as e:
                 err_event = json.dumps({"type": "error", "message": str(e)})
                 self.wfile.write(f"data: {err_event}\n\n".encode('utf-8'))
@@ -79,6 +99,18 @@ def start_server(port: int = 8080, repo_dir: str = "."):
     client = CopilotClient()
     engine = JulesAgentEngine(client=client, repo_dir=repo_dir)
     JulesWebHandler.agent_engine = engine
+
+    # Check authentication state on startup
+    if not client.github_token:
+        try:
+            df = client.start_device_flow()
+            print("\n" + "=" * 60)
+            print("🔑 GitHub Copilot Authentication Required")
+            print(f"1. Open URL in browser: {df['verification_uri']}")
+            print(f"2. Enter Code: {df['user_code']}")
+            print("=" * 60 + "\n")
+        except Exception as e:
+            print(f"⚠️ Auth check notice: {e}")
 
     server_address = ('', port)
     httpd = socketserver.TCPServer(server_address, JulesWebHandler)

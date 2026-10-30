@@ -115,6 +115,38 @@
             accent-color: var(--accent-color);
         }
 
+        .auth-banner {
+            margin-bottom: 16px;
+            padding: 14px;
+            border-radius: 6px;
+            background-color: rgba(88, 166, 255, 0.1);
+            border: 1px solid var(--blue-accent);
+        }
+
+        .auth-banner h4 {
+            font-size: 13px;
+            color: var(--blue-accent);
+            margin-bottom: 6px;
+        }
+
+        .auth-banner p {
+            font-size: 12px;
+            color: var(--text-color);
+            margin-bottom: 8px;
+        }
+
+        .auth-code {
+            font-family: var(--code-font);
+            font-size: 16px;
+            font-weight: bold;
+            color: #f0f6fc;
+            background: #21262d;
+            padding: 4px 8px;
+            border-radius: 4px;
+            display: inline-block;
+            letter-spacing: 1px;
+        }
+
         .pr-banner {
             margin-top: 16px;
             padding: 12px;
@@ -255,6 +287,8 @@
             </div>
         </div>
 
+        <div id="auth-container"></div>
+
         <div class="plan-section">
             <div class="plan-title">Execution Plan</div>
             <ul class="plan-list" id="plan-list">
@@ -301,7 +335,27 @@
         const chatMessages = document.getElementById('chat-messages');
         const userInput = document.getElementById('user-input');
         const sendBtn = document.getElementById('send-btn');
+        const authContainer = document.getElementById('auth-container');
         let currentAssistantMsgEl = null;
+
+        async function checkAuthStatus() {
+            try {
+                const res = await fetch('/api/auth/status');
+                const data = await res.json();
+                if (!data.authenticated && data.device_flow) {
+                    const df = data.device_flow;
+                    authContainer.innerHTML = `
+                        <div class="auth-banner">
+                            <h4>🔑 GitHub Copilot Login</h4>
+                            <p>1. Open <a href="${df.verification_uri}" target="_blank" style="color: var(--blue-accent);">${df.verification_uri}</a></p>
+                            <p>2. Enter Code: <span class="auth-code">${df.user_code}</span></p>
+                        </div>
+                    `;
+                } else {
+                    authContainer.innerHTML = '';
+                }
+            } catch (e) {}
+        }
 
         function appendUserMessage(text) {
             const msg = document.createElement('div');
@@ -379,6 +433,9 @@
                 if (resEl) {
                     resEl.textContent = evt.result;
                 }
+            } else if (evt.type === 'error') {
+                currentAssistantMsgEl.innerHTML += `<br><span style="color: #f85149;">${evt.message}</span>`;
+                checkAuthStatus();
             }
             chatMessages.scrollTop = chatMessages.scrollHeight;
         }
@@ -390,6 +447,8 @@
                 sendPrompt();
             }
         });
+
+        checkAuthStatus();
     </script>
 </body>
 </html>
