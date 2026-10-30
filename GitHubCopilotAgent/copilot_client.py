@@ -24,11 +24,15 @@ class CopilotAuthError(Exception):
 
 class CopilotClient:
     def __init__(self, github_token: Optional[str] = None):
-        self.github_token = github_token or self._find_github_token()
+        self.explicit_token = github_token
         self.copilot_token: Optional[str] = None
         self.copilot_expires_at: int = 0
         self.copilot_endpoints: Dict[str, str] = {}
         self.pending_device_flow: Optional[Dict[str, Any]] = None
+
+    @property
+    def github_token(self) -> Optional[str]:
+        return self.explicit_token or self._find_github_token()
 
     def _find_github_token(self) -> Optional[str]:
         """Attempt to retrieve GitHub token from env, gh CLI, or credentials file."""
@@ -38,7 +42,20 @@ class CopilotClient:
         if os.environ.get("GH_TOKEN"):
             return os.environ["GH_TOKEN"]
 
-        # 2. gh CLI
+        # 2. credentials.json file in current directory or user home
+        creds_paths = ["credentials.json", os.path.expanduser("~/.config/github-copilot/credentials.json")]
+        for path in creds_paths:
+            if os.path.exists(path):
+                try:
+                    with open(path, "r", encoding="utf-8") as f:
+                        data = json.load(f)
+                        token = data.get("github_token") or data.get("token") or data.get("access_token")
+                        if token:
+                            return token
+                except Exception:
+                    pass
+
+        # 3. gh CLI
         try:
             result = subprocess.run(
                 ["gh", "auth", "token"],
@@ -52,39 +69,34 @@ class CopilotClient:
         except Exception:
             pass
 
-        # 3. credentials.json file in current directory or user home
-        creds_paths = ["credentials.json", os.path.expanduser("~/.config/github-copilot/credentials.json")]
-        for path in creds_paths:
-            if os.path.exists(path):
-                try:
-                    with open(path, "r", encoding="utf-8") as f:
-                        data = json.load(f)
-                        token = data.get("github_token") or data.get("token") or data.get("access_token")
-                        if token:
-                            return token
-                except Exception:
-                    pass
-
         return None
 
     def start_device_flow(self) -> Dict[str, Any]:
         """Initiate GitHub OAuth Device Flow and return user_code & verification_uri."""
         req_data = json.dumps({"client_id": CLIENT_ID, "scope": "read:user"}).encode("utf-8")
-        req = urllib.request.Request(
+        endpoints = [
             "https://github.com/login/device/code",
-            data=req_data,
-            headers={
-                "Content-Type": "application/json",
-                "Accept": "application/json"
-            }
-        )
-        try:
-            with urllib.request.urlopen(req) as resp:
-                res = json.loads(resp.read().decode("utf-8"))
-                self.pending_device_flow = res
-                return res
-        except Exception as e:
-            raise CopilotAuthError(f"Failed to initiate device flow: {e}")
+            "https://github.com/login/oauth/device/code"
+        ]
+        last_err = None
+        for endpoint in endpoints:
+            req = urllib.request.Request(
+                endpoint,
+                data=req_data,
+                headers={
+                    "Content-Type": "application/json",
+                    "Accept": "application/json"
+                }
+            )
+            try:
+                with urllib.request.urlopen(req) as resp:
+                    res = json.loads(resp.read().decode("utf-8"))
+                    self.pending_device_flow = res
+                    return res
+            except Exception as e:
+                last_err = e
+
+        raise CopilotAuthError(f"Failed to initiate device flow: {last_err}")
 
     def device_flow_authenticate(self) -> str:
         """Perform GitHub OAuth Device Flow authentication blocking loop."""
@@ -125,9 +137,8 @@ class CopilotClient:
 
             if "access_token" in poll_res:
                 token = poll_res["access_token"]
-                self.github_token = token
+                self.explicit_token = token
                 self.pending_device_flow = None
-                # Save to credentials.json
                 try:
                     with open("credentials.json", "w", encoding="utf-8") as f:
                         json.dump({"github_token": token}, f, indent=2)
@@ -144,50 +155,40 @@ class CopilotClient:
 
     def ensure_copilot_token(self) -> str:
         """Obtain or refresh Copilot internal session token."""
-        if not self.github_token:
-            self.device_flow_authenticate()
+        token_to_use = self.github_token
+        if not token_to_use:
+            raise CopilotAuthError("No GitHub token found. Please add github_token to credentials.json or run `gh auth login`.")
 
         if self.copilot_token and time.time() < (self.copilot_expires_at - 60):
             return self.copilot_token
 
-        req = urllib.request.Request(
-            "https://api.github.com/copilot_internal/v2/token",
-            headers={
-                "Authorization": f"token {self.github_token}",
-                "User-Agent": "GithubCopilot/1.155.0",
-                "Accept": "application/json"
-            }
-        )
+        # Try token prefix then Bearer prefix
+        headers_list = [
+            {"Authorization": f"token {token_to_use}", "User-Agent": "GithubCopilot/1.155.0", "Accept": "application/json"},
+            {"Authorization": f"Bearer {token_to_use}", "User-Agent": "GithubCopilot/1.155.0", "Accept": "application/json"}
+        ]
 
-        try:
-            with urllib.request.urlopen(req) as resp:
-                data = json.loads(resp.read().decode("utf-8"))
-                self.copilot_token = data["token"]
-                self.copilot_expires_at = data.get("expires_at", time.time() + 1800)
-                self.copilot_endpoints = data.get("endpoints", {})
-                return self.copilot_token
-        except urllib.error.HTTPError as e:
-            if e.code in (401, 403):
-                req = urllib.request.Request(
-                    "https://api.github.com/copilot_internal/v2/token",
-                    headers={
-                        "Authorization": f"Bearer {self.github_token}",
-                        "User-Agent": "GithubCopilot/1.155.0",
-                        "Accept": "application/json"
-                    }
-                )
-                try:
-                    with urllib.request.urlopen(req) as resp:
-                        data = json.loads(resp.read().decode("utf-8"))
-                        self.copilot_token = data["token"]
-                        self.copilot_expires_at = data.get("expires_at", time.time() + 1800)
-                        self.copilot_endpoints = data.get("endpoints", {})
-                        return self.copilot_token
-                except Exception as ex:
-                    raise CopilotAuthError(f"Copilot Token Request failed (401/403): {ex}. Ensure account has GitHub Copilot (Free/Pro/Biz) active.")
-            raise CopilotAuthError(f"Failed to fetch Copilot internal token: {e}")
-        except Exception as e:
-            raise CopilotAuthError(f"Failed to fetch Copilot internal token: {e}")
+        last_error_msg = ""
+        for headers in headers_list:
+            req = urllib.request.Request("https://api.github.com/copilot_internal/v2/token", headers=headers)
+            try:
+                with urllib.request.urlopen(req) as resp:
+                    data = json.loads(resp.read().decode("utf-8"))
+                    self.copilot_token = data["token"]
+                    self.copilot_expires_at = data.get("expires_at", time.time() + 1800)
+                    self.copilot_endpoints = data.get("endpoints", {})
+                    return self.copilot_token
+            except urllib.error.HTTPError as e:
+                err_body = e.read().decode("utf-8") if hasattr(e, "read") else str(e)
+                last_error_msg = f"HTTP {e.code}: {err_body}"
+            except Exception as e:
+                last_error_msg = str(e)
+
+        raise CopilotAuthError(
+            f"Failed to fetch Copilot internal token ({last_error_msg}). "
+            "Please verify: 1) Your GitHub account has an active GitHub Copilot subscription (Free, Pro, or Business), "
+            "and 2) Your personal access token in credentials.json includes the 'copilot' or 'repo' scope."
+        )
 
     def chat_completions(
         self,

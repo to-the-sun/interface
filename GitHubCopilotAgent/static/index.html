@@ -419,22 +419,50 @@
             }
         }
 
+        let activeToolBox = null;
+
+        function escapeHtml(str) {
+            return str
+                .replace(/&/g, "&amp;")
+                .replace(/</g, "&lt;")
+                .replace(/>/g, "&gt;")
+                .replace(/"/g, "&quot;")
+                .replace(/'/g, "&#039;");
+        }
+
         function handleAgentEvent(evt) {
             if (evt.type === 'content_delta') {
-                currentAssistantMsgEl.innerHTML += evt.content.replace(/\n/g, '<br>');
+                const textNode = document.createElement('span');
+                textNode.innerHTML = escapeHtml(evt.content).replace(/\n/g, '<br>');
+                currentAssistantMsgEl.appendChild(textNode);
             } else if (evt.type === 'tool_call') {
                 const box = document.createElement('div');
                 box.className = 'tool-call-box';
-                box.id = `tool-${evt.name}`;
-                box.innerHTML = `<div class="tool-call-header">🔧 Tool Call: ${evt.name}</div><code>${JSON.stringify(evt.args)}</code><div class="tool-call-result" id="res-${evt.name}">Running...</div>`;
+                const header = document.createElement('div');
+                header.className = 'tool-call-header';
+                header.textContent = `🔧 Tool Call: ${evt.name}`;
+                const code = document.createElement('code');
+                code.textContent = JSON.stringify(evt.args);
+                const resDiv = document.createElement('div');
+                resDiv.className = 'tool-call-result';
+                resDiv.textContent = 'Running...';
+
+                box.appendChild(header);
+                box.appendChild(code);
+                box.appendChild(resDiv);
+
+                activeToolBox = resDiv;
                 currentAssistantMsgEl.appendChild(box);
             } else if (evt.type === 'tool_result') {
-                const resEl = document.getElementById(`res-${evt.name}`);
-                if (resEl) {
-                    resEl.textContent = evt.result;
+                if (activeToolBox) {
+                    activeToolBox.textContent = evt.result;
+                    activeToolBox = null;
                 }
             } else if (evt.type === 'error') {
-                currentAssistantMsgEl.innerHTML += `<br><span style="color: #f85149;">${evt.message}</span>`;
+                const errSpan = document.createElement('div');
+                errSpan.style.color = '#f85149';
+                errSpan.textContent = evt.message;
+                currentAssistantMsgEl.appendChild(errSpan);
                 checkAuthStatus();
             }
             chatMessages.scrollTop = chatMessages.scrollHeight;
