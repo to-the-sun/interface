@@ -1,0 +1,395 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Jules — GitHub Copilot Agent</title>
+    <style>
+        :root {
+            --bg-color: #0d1117;
+            --panel-bg: #161b22;
+            --border-color: #30363d;
+            --text-color: #c9d1d9;
+            --text-heading: #f0f6fc;
+            --accent-color: #238636;
+            --accent-hover: #2ea043;
+            --blue-accent: #58a6ff;
+            --purple-accent: #8957e5;
+            --font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif, "Apple Color Emoji", "Segoe UI Emoji";
+            --code-font: "SFMono-Regular", Consolas, "Liberation Mono", Menlo, Courier, monospace;
+        }
+
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+
+        body {
+            background-color: var(--bg-color);
+            color: var(--text-color);
+            font-family: var(--font-family);
+            display: flex;
+            height: 100vh;
+            overflow: hidden;
+        }
+
+        /* Sidebar */
+        .sidebar {
+            width: 320px;
+            background-color: var(--panel-bg);
+            border-right: 1px solid var(--border-color);
+            display: flex;
+            flex-direction: column;
+            padding: 16px;
+        }
+
+        .header {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            padding-bottom: 16px;
+            border-bottom: 1px solid var(--border-color);
+            margin-bottom: 16px;
+        }
+
+        .header-avatar {
+            width: 32px;
+            height: 32px;
+            border-radius: 50%;
+            background: linear-gradient(135deg, #8957e5, #58a6ff);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: bold;
+            color: white;
+            font-size: 14px;
+        }
+
+        .header-title {
+            font-size: 16px;
+            font-weight: 600;
+            color: var(--text-heading);
+        }
+
+        .header-subtitle {
+            font-size: 11px;
+            color: #8b949e;
+        }
+
+        .plan-section {
+            flex: 1;
+            overflow-y: auto;
+        }
+
+        .plan-title {
+            font-size: 12px;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            color: #8b949e;
+            margin-bottom: 12px;
+        }
+
+        .plan-list {
+            list-style: none;
+        }
+
+        .plan-item {
+            display: flex;
+            align-items: flex-start;
+            gap: 10px;
+            padding: 8px 0;
+            font-size: 13px;
+            line-height: 1.4;
+            border-bottom: 1px dashed var(--border-color);
+        }
+
+        .plan-item.completed {
+            color: #8b949e;
+            text-decoration: line-through;
+        }
+
+        .plan-checkbox {
+            margin-top: 3px;
+            accent-color: var(--accent-color);
+        }
+
+        .pr-banner {
+            margin-top: 16px;
+            padding: 12px;
+            border-radius: 6px;
+            background-color: rgba(35, 134, 54, 0.15);
+            border: 1px solid var(--accent-color);
+            display: none;
+        }
+
+        .pr-banner h4 {
+            font-size: 13px;
+            color: #3fb950;
+            margin-bottom: 4px;
+        }
+
+        .pr-banner p {
+            font-size: 11px;
+            color: #8b949e;
+        }
+
+        /* Main Chat Panel */
+        .main-content {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            height: 100vh;
+        }
+
+        .chat-messages {
+            flex: 1;
+            padding: 24px;
+            overflow-y: auto;
+            display: flex;
+            flex-direction: column;
+            gap: 16px;
+        }
+
+        .message {
+            display: flex;
+            flex-direction: column;
+            max-width: 90%;
+            border-radius: 8px;
+            padding: 14px 16px;
+            font-size: 14px;
+            line-height: 1.6;
+        }
+
+        .message.user {
+            align-self: flex-end;
+            background-color: #1f6feb;
+            color: white;
+        }
+
+        .message.assistant {
+            align-self: flex-start;
+            background-color: var(--panel-bg);
+            border: 1px solid var(--border-color);
+            color: var(--text-color);
+            width: 100%;
+        }
+
+        .tool-call-box {
+            background: #0d1117;
+            border: 1px solid #30363d;
+            border-radius: 6px;
+            padding: 10px 12px;
+            margin: 8px 0;
+            font-family: var(--code-font);
+            font-size: 12px;
+        }
+
+        .tool-call-header {
+            color: var(--blue-accent);
+            font-weight: bold;
+            margin-bottom: 4px;
+        }
+
+        .tool-call-result {
+            color: #8b949e;
+            white-space: pre-wrap;
+            max-height: 200px;
+            overflow-y: auto;
+            margin-top: 6px;
+            padding-top: 6px;
+            border-top: 1px solid #21262d;
+        }
+
+        /* Input Area */
+        .input-container {
+            padding: 16px 24px;
+            background-color: var(--panel-bg);
+            border-top: 1px solid var(--border-color);
+            display: flex;
+            gap: 12px;
+        }
+
+        textarea {
+            flex: 1;
+            background-color: var(--bg-color);
+            border: 1px solid var(--border-color);
+            border-radius: 6px;
+            color: var(--text-color);
+            padding: 12px;
+            font-family: var(--font-family);
+            font-size: 14px;
+            resize: none;
+            height: 52px;
+            outline: none;
+        }
+
+        textarea:focus {
+            border-color: var(--blue-accent);
+        }
+
+        button.send-btn {
+            background-color: var(--accent-color);
+            color: white;
+            border: none;
+            border-radius: 6px;
+            padding: 0 20px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: background 0.2s;
+        }
+
+        button.send-btn:hover {
+            background-color: var(--accent-hover);
+        }
+    </style>
+</head>
+<body>
+    <div class="sidebar">
+        <div class="header">
+            <div class="header-avatar">J</div>
+            <div>
+                <div class="header-title">Jules Agent</div>
+                <div class="header-subtitle">Powered by GitHub Copilot Free</div>
+            </div>
+        </div>
+
+        <div class="plan-section">
+            <div class="plan-title">Execution Plan</div>
+            <ul class="plan-list" id="plan-list">
+                <li class="plan-item">
+                    <input type="checkbox" class="plan-checkbox" disabled>
+                    <span>1. Inspect codebase and outline strategy</span>
+                </li>
+                <li class="plan-item">
+                    <input type="checkbox" class="plan-checkbox" disabled>
+                    <span>2. Implement changes on target branch</span>
+                </li>
+                <li class="plan-item">
+                    <input type="checkbox" class="plan-checkbox" disabled>
+                    <span>3. Verify changes with unit tests</span>
+                </li>
+                <li class="plan-item">
+                    <input type="checkbox" class="plan-checkbox" disabled>
+                    <span>4. Commit changes and submit Pull Request</span>
+                </li>
+            </ul>
+        </div>
+
+        <div class="pr-banner" id="pr-banner">
+            <h4>Pull Request Created</h4>
+            <p id="pr-link">Branch pushed and PR opened.</p>
+        </div>
+    </div>
+
+    <div class="main-content">
+        <div class="chat-messages" id="chat-messages">
+            <div class="message assistant">
+                Hello! I am <strong>Jules</strong>, your AI coding agent powered by GitHub Copilot.<br>
+                Describe what task, fix, or feature you'd like me to work on, and I'll create a new branch, execute the changes, and submit a pull request!
+            </div>
+        </div>
+
+        <div class="input-container">
+            <textarea id="user-input" placeholder="Ask Jules to solve an issue, refactor code, or build a feature..."></textarea>
+            <button class="send-btn" id="send-btn">Send</button>
+        </div>
+    </div>
+
+    <script>
+        const chatMessages = document.getElementById('chat-messages');
+        const userInput = document.getElementById('user-input');
+        const sendBtn = document.getElementById('send-btn');
+        let currentAssistantMsgEl = null;
+
+        function appendUserMessage(text) {
+            const msg = document.createElement('div');
+            msg.className = 'message user';
+            msg.textContent = text;
+            chatMessages.appendChild(msg);
+            chatMessages.scrollTop = chatMessages.scrollHeight;
+        }
+
+        function createAssistantMessage() {
+            const msg = document.createElement('div');
+            msg.className = 'message assistant';
+            chatMessages.appendChild(msg);
+            chatMessages.scrollTop = chatMessages.scrollHeight;
+            return msg;
+        }
+
+        async function sendPrompt() {
+            const text = userInput.value.trim();
+            if (!text) return;
+
+            appendUserMessage(text);
+            userInput.value = '';
+
+            currentAssistantMsgEl = createAssistantMessage();
+
+            try {
+                const response = await fetch('/api/prompt', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({prompt: text})
+                });
+
+                const reader = response.body.getReader();
+                const decoder = new TextDecoder();
+                let buffer = '';
+
+                while (true) {
+                    const {done, value} = await reader.read();
+                    if (done) break;
+
+                    buffer += decoder.decode(value, {stream: true});
+                    const lines = buffer.split('\n');
+                    buffer = lines.pop();
+
+                    for (const line of lines) {
+                        if (line.startsWith && line.startsWith('data: ')) {
+                            const dataStr = line.slice(6).trim();
+                            if (dataStr === '[DONE]') break;
+                            try {
+                                const evt = JSON.parse(dataStr);
+                                handleAgentEvent(evt);
+                            } catch (e) {}
+                        }
+                    }
+                }
+            } catch (err) {
+                if (currentAssistantMsgEl) {
+                    currentAssistantMsgEl.innerHTML += `<br><span style="color: #f85149;">Error: ${err.message}</span>`;
+                }
+            }
+        }
+
+        function handleAgentEvent(evt) {
+            if (evt.type === 'content_delta') {
+                currentAssistantMsgEl.innerHTML += evt.content.replace(/\n/g, '<br>');
+            } else if (evt.type === 'tool_call') {
+                const box = document.createElement('div');
+                box.className = 'tool-call-box';
+                box.id = `tool-${evt.name}`;
+                box.innerHTML = `<div class="tool-call-header">🔧 Tool Call: ${evt.name}</div><code>${JSON.stringify(evt.args)}</code><div class="tool-call-result" id="res-${evt.name}">Running...</div>`;
+                currentAssistantMsgEl.appendChild(box);
+            } else if (evt.type === 'tool_result') {
+                const resEl = document.getElementById(`res-${evt.name}`);
+                if (resEl) {
+                    resEl.textContent = evt.result;
+                }
+            }
+            chatMessages.scrollTop = chatMessages.scrollHeight;
+        }
+
+        sendBtn.addEventListener('click', sendPrompt);
+        userInput.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter' && !e.shiftKey) {
+                e.preventDefault();
+                sendPrompt();
+            }
+        });
+    </script>
+</body>
+</html>
