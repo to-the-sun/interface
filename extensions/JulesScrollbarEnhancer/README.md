@@ -1,6 +1,6 @@
-# Jules.google.com Scrollbar Enhancer
+# Jules.google.com & Freebuff.com Scrollbar Enhancer
 
-A Chrome Extension (Manifest V3) that enhances the `jules.google.com` interface with prominent, highly visible scrollbars equipped with clickable top and bottom arrows on all scrollable panels.
+A Chrome Extension (Manifest V3) that enhances web interfaces like `jules.google.com` and `freebuff.com` with prominent, highly visible scrollbars equipped with clickable top and bottom arrows on all scrollable panels.
 
 ## Features
 
@@ -17,4 +17,4 @@ A Chrome Extension (Manifest V3) that enhances the `jules.google.com` interface 
 3. Enable **Developer mode** in the top-right corner.
 4. Click **Load unpacked** in the top-left corner.
 5. Select the `extensions/JulesScrollbarEnhancer` folder from this repository.
-6. Open or refresh [jules.google.com](https://jules.google.com) to enjoy custom scrollbars on all panels!
+6. Open or refresh [jules.google.com](https://jules.google.com) or [freebuff.com](https://freebuff.com) to enjoy custom scrollbars on all panels!

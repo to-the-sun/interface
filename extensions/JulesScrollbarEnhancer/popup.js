@@ -33,14 +33,23 @@ document.addEventListener('DOMContentLoaded', () => {
       });
     }
 
-    // Notify active tabs matching jules.google.com
+    // Notify active tabs matching supported sites (jules.google.com and freebuff.com)
     if (typeof chrome !== 'undefined' && chrome.tabs) {
-      chrome.tabs.query({ url: 'https://jules.google.com/*' }, (tabs) => {
-        tabs.forEach(tab => {
-          chrome.tabs.sendMessage(tab.id, {
-            type: 'SETTINGS_UPDATED',
-            settings: newSettings
-          });
+      const matchUrls = [
+        'https://jules.google.com/*',
+        'https://freebuff.com/*',
+        'https://*.freebuff.com/*'
+      ];
+      matchUrls.forEach(urlPattern => {
+        chrome.tabs.query({ url: urlPattern }, (tabs) => {
+          if (tabs) {
+            tabs.forEach(tab => {
+              chrome.tabs.sendMessage(tab.id, {
+                type: 'SETTINGS_UPDATED',
+                settings: newSettings
+              });
+            });
+          }
         });
       });
     }
