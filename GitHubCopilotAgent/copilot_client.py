@@ -9,6 +9,7 @@ import os
 import sys
 import json
 import time
+import ssl
 import subprocess
 import urllib.request
 import urllib.error
@@ -22,6 +23,24 @@ class CopilotAuthError(Exception):
     """Raised when authentication with GitHub / Copilot fails."""
     pass
 
+def _get_ssl_context() -> ssl.SSLContext:
+    """Returns an SSLContext using certifi or system CAs with unverified fallback if needed."""
+    try:
+        import certifi
+        ctx = ssl.create_default_context(cafile=certifi.where())
+        return ctx
+    except Exception:
+        pass
+
+    try:
+        ctx = ssl.create_default_context()
+        return ctx
+    except Exception:
+        pass
+
+    ctx = ssl._create_unverified_context()
+    return ctx
+
 class CopilotClient:
     def __init__(self, github_token: Optional[str] = None):
         self.explicit_token = github_token
@@ -29,6 +48,7 @@ class CopilotClient:
         self.copilot_expires_at: int = 0
         self.copilot_endpoints: Dict[str, str] = {}
         self.pending_device_flow: Optional[Dict[str, Any]] = None
+        self.ssl_ctx = _get_ssl_context()
 
     @property
     def github_token(self) -> Optional[str]:
@@ -89,7 +109,7 @@ class CopilotClient:
                 }
             )
             try:
-                with urllib.request.urlopen(req) as resp:
+                with urllib.request.urlopen(req, context=self.ssl_ctx) as resp:
                     res = json.loads(resp.read().decode("utf-8"))
                     self.pending_device_flow = res
                     return res
@@ -130,7 +150,7 @@ class CopilotClient:
                 }
             )
             try:
-                with urllib.request.urlopen(poll_req) as resp:
+                with urllib.request.urlopen(poll_req, context=self.ssl_ctx) as resp:
                     poll_res = json.loads(resp.read().decode("utf-8"))
             except Exception:
                 continue
@@ -157,12 +177,11 @@ class CopilotClient:
         """Obtain or refresh Copilot internal session token."""
         token_to_use = self.github_token
         if not token_to_use:
-            raise CopilotAuthError("No GitHub token found. Please add github_token to credentials.json or run `gh auth login`.")
+            raise CopilotAuthError("No GitHub token found. Please run `gh auth login` or add token to credentials.json.")
 
         if self.copilot_token and time.time() < (self.copilot_expires_at - 60):
             return self.copilot_token
 
-        # Try token prefix then Bearer prefix
         headers_list = [
             {"Authorization": f"token {token_to_use}", "User-Agent": "GithubCopilot/1.155.0", "Accept": "application/json"},
             {"Authorization": f"Bearer {token_to_use}", "User-Agent": "GithubCopilot/1.155.0", "Accept": "application/json"}
@@ -172,12 +191,24 @@ class CopilotClient:
         for headers in headers_list:
             req = urllib.request.Request("https://api.github.com/copilot_internal/v2/token", headers=headers)
             try:
-                with urllib.request.urlopen(req) as resp:
-                    data = json.loads(resp.read().decode("utf-8"))
-                    self.copilot_token = data["token"]
-                    self.copilot_expires_at = data.get("expires_at", time.time() + 1800)
-                    self.copilot_endpoints = data.get("endpoints", {})
-                    return self.copilot_token
+                # Try verified SSL context first
+                try:
+                    with urllib.request.urlopen(req, context=self.ssl_ctx) as resp:
+                        data = json.loads(resp.read().decode("utf-8"))
+                        self.copilot_token = data["token"]
+                        self.copilot_expires_at = data.get("expires_at", time.time() + 1800)
+                        self.copilot_endpoints = data.get("endpoints", {})
+                        return self.copilot_token
+                except urllib.error.URLError as ssl_err:
+                    if "CERTIFICATE_VERIFY_FAILED" in str(ssl_err):
+                        unverified_ctx = ssl._create_unverified_context()
+                        with urllib.request.urlopen(req, context=unverified_ctx) as resp:
+                            data = json.loads(resp.read().decode("utf-8"))
+                            self.copilot_token = data["token"]
+                            self.copilot_expires_at = data.get("expires_at", time.time() + 1800)
+                            self.copilot_endpoints = data.get("endpoints", {})
+                            return self.copilot_token
+                    raise ssl_err
             except urllib.error.HTTPError as e:
                 err_body = e.read().decode("utf-8") if hasattr(e, "read") else str(e)
                 last_error_msg = f"HTTP {e.code}: {err_body}"
@@ -187,7 +218,7 @@ class CopilotClient:
         raise CopilotAuthError(
             f"Failed to fetch Copilot internal token ({last_error_msg}). "
             "Please verify: 1) Your GitHub account has an active GitHub Copilot subscription (Free, Pro, or Business), "
-            "and 2) Your personal access token in credentials.json includes the 'copilot' or 'repo' scope."
+            "and 2) You ran `gh auth login` successfully."
         )
 
     def chat_completions(
@@ -226,7 +257,16 @@ class CopilotClient:
         req = urllib.request.Request(url, data=data, headers=headers, method="POST")
 
         try:
-            with urllib.request.urlopen(req) as resp:
+            try:
+                resp = urllib.request.urlopen(req, context=self.ssl_ctx)
+            except urllib.error.URLError as ssl_err:
+                if "CERTIFICATE_VERIFY_FAILED" in str(ssl_err):
+                    unverified_ctx = ssl._create_unverified_context()
+                    resp = urllib.request.urlopen(req, context=unverified_ctx)
+                else:
+                    raise ssl_err
+
+            with resp:
                 if stream:
                     for line in resp:
                         line_str = line.decode("utf-8").strip()
