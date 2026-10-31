@@ -1,11 +1,13 @@
 // ==UserScript==
-// @name         Discord Bottom-Left Ad Blocker
+// @name         Discord & Freebuff Ad Blocker
 // @namespace    https://github.com/jules/discord-adblocker
-// @version      1.0.0
-// @description  Blocks intrusive advertisements, Quests, Nitro upsells, and promo popups in the bottom-left corner of Discord. Includes a beautiful integrated in-app settings widget next to your profile panel!
+// @version      1.1.0
+// @description  Blocks intrusive advertisements on Discord (clean hiding) and Freebuff.com (opaque black rectangle overlay). Includes an integrated in-app settings widget on Discord!
 // @author       Jules
 // @match        https://discord.com/*
 // @match        https://*.discord.com/*
+// @match        https://freebuff.com/*
+// @match        https://*.freebuff.com/*
 // @run-at       document-start
 // @grant        none
 // ==/UserScript==
@@ -13,7 +15,66 @@
 (function() {
   'use strict';
 
-  // Default CSS Rules targeting all kinds of promotional elements
+  const IS_FREEBUFF = window.location.hostname.includes('freebuff.com');
+
+  // Freebuff CSS Rules: Renders an opaque black rectangle over the ads
+  const FREEBUFF_CSS = `
+    .adblocker-covered-rect {
+      position: relative !important;
+    }
+    .adblocker-covered-rect::after {
+      content: "" !important;
+      position: absolute !important;
+      inset: 0 !important;
+      background-color: #000000 !important;
+      opacity: 1 !important;
+      z-index: 2147483647 !important;
+      pointer-events: auto !important;
+      border-radius: inherit !important;
+    }
+
+    .placement-sidebar-card,
+    .cloud-billboard,
+    .partner-placement,
+    .cloud-ad-frame,
+    .cloud-composer-ads,
+    .workspace-gravity-ad,
+    .sponsored-ad,
+    .ad-showcase,
+    .ad-banner,
+    .cloud-sponsor-overlay,
+    div[data-placement-id*="Billboard"],
+    div[data-placement-id*="Sidebar"],
+    div[data-placement-id*="Partner"],
+    div[data-placement-id*="Composer"] {
+      position: relative !important;
+    }
+    .placement-sidebar-card::after,
+    .cloud-billboard::after,
+    .partner-placement::after,
+    .cloud-ad-frame::after,
+    .cloud-composer-ads::after,
+    .workspace-gravity-ad::after,
+    .sponsored-ad::after,
+    .ad-showcase::after,
+    .ad-banner::after,
+    .cloud-sponsor-overlay::after,
+    div[data-placement-id*="Billboard"]::after,
+    div[data-placement-id*="Sidebar"]::after,
+    div[data-placement-id*="Partner"]::after,
+    div[data-placement-id*="Composer"]::after {
+      content: "" !important;
+      position: absolute !important;
+      inset: 0 !important;
+      background-color: #000000 !important;
+      opacity: 1 !important;
+      z-index: 2147483647 !important;
+      pointer-events: auto !important;
+      border-radius: inherit !important;
+    }
+  `;
+
+  // Default CSS Rules targeting all kinds of promotional elements on Discord
   const DEFAULT_CSS = `
     /* Block Outer Quest Cards & Panels strictly inside bottom-left panels_ area */
     div[class*="panels_"] > *:has([class*="quest" i]):not(:has(button[aria-label="User Settings"])):not(:has([class*="avatar_"])),
@@ -254,8 +315,15 @@
   // Inject CSS rules instantly at document-start
   const styleEl = document.createElement('style');
   styleEl.id = 'discord-adblocker-userscript-style';
-  styleEl.textContent = DEFAULT_CSS;
-  (document.head || document.documentElement).appendChild(styleEl);
+  styleEl.textContent = IS_FREEBUFF ? FREEBUFF_CSS : DEFAULT_CSS;
+  const target = document.head || document.documentElement;
+  if (target) {
+    target.appendChild(styleEl);
+  } else {
+    document.addEventListener('DOMContentLoaded', () => {
+      (document.head || document.documentElement).appendChild(styleEl);
+    });
+  }
 
   // Configuration management using localStorage
   let config = {
@@ -299,6 +367,11 @@
   function applyConfig() {
     if (!config.enabled) {
       styleEl.textContent = '.adblocker-widget-btn { display: flex; }'; // Keep button styling only
+      return;
+    }
+
+    if (IS_FREEBUFF) {
+      styleEl.textContent = FREEBUFF_CSS;
       return;
     }
 
@@ -368,6 +441,65 @@
     if (statsVal) {
       statsVal.textContent = config.blockedCount.toLocaleString();
     }
+  }
+
+  // Render an opaque black rectangle over Freebuff ads
+  function coverWithBlackRectangle(el) {
+    if (!el || (el.getAttribute && el.getAttribute('data-discord-adblocker-blocked') === 'true')) return;
+
+    el.classList.add('adblocker-covered-rect');
+    el.setAttribute('data-discord-adblocker-blocked', 'true');
+
+    if (!el.querySelector(':scope > .adblocker-direct-overlay')) {
+      const overlay = document.createElement('div');
+      overlay.className = 'adblocker-direct-overlay';
+      overlay.style.cssText = `
+        position: absolute !important;
+        top: 0 !important;
+        left: 0 !important;
+        right: 0 !important;
+        bottom: 0 !important;
+        width: 100% !important;
+        height: 100% !important;
+        background-color: #000000 !important;
+        opacity: 1 !important;
+        z-index: 2147483647 !important;
+        pointer-events: auto !important;
+        border-radius: inherit !important;
+      `;
+      const computedPos = window.getComputedStyle ? window.getComputedStyle(el).position : el.style.position;
+      if (!computedPos || computedPos === 'static') {
+        el.style.setProperty('position', 'relative', 'important');
+      }
+      el.appendChild(overlay);
+    }
+
+    incrementBlockedCount();
+  }
+
+  const FREEBUFF_AD_SELECTORS = [
+    '.placement-sidebar-card',
+    '.cloud-billboard',
+    '.partner-placement',
+    '.cloud-ad-frame',
+    '.cloud-composer-ads',
+    '.workspace-gravity-ad',
+    '.sponsored-ad',
+    '.ad-showcase',
+    '.ad-banner',
+    '.cloud-sponsor-overlay',
+    'div[data-placement-id*="Billboard"]',
+    'div[data-placement-id*="Sidebar"]',
+    'div[data-placement-id*="Partner"]',
+    'div[data-placement-id*="Composer"]'
+  ];
+
+  function checkAndCoverFreebuffAds() {
+    if (!IS_FREEBUFF || !config.enabled) return;
+
+    document.querySelectorAll(FREEBUFF_AD_SELECTORS.join(',')).forEach(el => {
+      coverWithBlackRectangle(el);
+    });
   }
 
   // Find highest safe quest parent container to collapse entire quest card box
@@ -493,6 +625,16 @@
       if (!config.enabled) return;
       if (el.closest && el.closest('[data-discord-adblocker-blocked="true"]')) return;
 
+      if (IS_FREEBUFF) {
+        for (const sel of FREEBUFF_AD_SELECTORS) {
+          if (el.matches && el.matches(sel)) {
+            coverWithBlackRectangle(el);
+            return;
+          }
+        }
+        return;
+      }
+
       let matchesAd = false;
 
       // Check quest selectors if enabled
@@ -559,10 +701,14 @@
 
     // Initial Scan
     const scanElements = () => {
-      checkAndHideQuestPanels();
-      const activeSelectors = getActiveSelectors();
-      if (activeSelectors.length > 0) {
-        document.querySelectorAll(activeSelectors.join(',')).forEach(checkAndMarkAd);
+      if (IS_FREEBUFF) {
+        checkAndCoverFreebuffAds();
+      } else {
+        checkAndHideQuestPanels();
+        const activeSelectors = getActiveSelectors();
+        if (activeSelectors.length > 0) {
+          document.querySelectorAll(activeSelectors.join(',')).forEach(checkAndMarkAd);
+        }
       }
     };
     scanElements();
@@ -570,19 +716,25 @@
     // Set up MutationObserver to watch for additions
     const observer = new MutationObserver((mutations) => {
       if (!config.enabled) return;
-      checkAndHideQuestPanels();
+      if (IS_FREEBUFF) {
+        checkAndCoverFreebuffAds();
+      } else {
+        checkAndHideQuestPanels();
+      }
+
       for (const mutation of mutations) {
         if (mutation.addedNodes) {
           for (const node of mutation.addedNodes) {
             if (node.nodeType === Node.ELEMENT_NODE) {
               checkAndMarkAd(node);
-              const activeSelectors = getActiveSelectors();
+              const activeSelectors = IS_FREEBUFF ? FREEBUFF_AD_SELECTORS : getActiveSelectors();
               if (activeSelectors.length > 0) {
                 node.querySelectorAll(activeSelectors.join(',')).forEach(checkAndMarkAd);
               }
 
-              // Try injecting our shield button next to the User Settings gear
-              tryInjectWidgetButton(node);
+              if (!IS_FREEBUFF) {
+                tryInjectWidgetButton(node);
+              }
             }
           }
         }
