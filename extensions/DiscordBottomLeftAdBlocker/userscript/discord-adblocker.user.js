@@ -2,7 +2,7 @@
 // @name         Discord & Freebuff Ad Blocker
 // @namespace    https://github.com/jules/discord-adblocker
 // @version      1.1.0
-// @description  Blocks intrusive advertisements on Discord and Freebuff.com. Includes a beautiful integrated in-app settings widget next to your Discord profile panel!
+// @description  Blocks intrusive advertisements on Discord (clean hiding) and Freebuff.com (opaque black rectangle overlay). Includes an integrated in-app settings widget on Discord!
 // @author       Jules
 // @match        https://discord.com/*
 // @match        https://*.discord.com/*
@@ -17,8 +17,22 @@
 
   const IS_FREEBUFF = window.location.hostname.includes('freebuff.com');
 
-  // Freebuff CSS Rules
+  // Freebuff CSS Rules: Renders an opaque black rectangle over the ads
   const FREEBUFF_CSS = `
+    .adblocker-covered-rect {
+      position: relative !important;
+    }
+    .adblocker-covered-rect::after {
+      content: "" !important;
+      position: absolute !important;
+      inset: 0 !important;
+      background-color: #000000 !important;
+      opacity: 1 !important;
+      z-index: 2147483647 !important;
+      pointer-events: auto !important;
+      border-radius: inherit !important;
+    }
+
     .placement-sidebar-card,
     .cloud-billboard,
     .partner-placement,
@@ -33,11 +47,34 @@
     div[data-placement-id*="Sidebar"],
     div[data-placement-id*="Partner"],
     div[data-placement-id*="Composer"] {
-      display: none !important;
+      position: relative !important;
+    }
+    .placement-sidebar-card::after,
+    .cloud-billboard::after,
+    .partner-placement::after,
+    .cloud-ad-frame::after,
+    .cloud-composer-ads::after,
+    .workspace-gravity-ad::after,
+    .sponsored-ad::after,
+    .ad-showcase::after,
+    .ad-banner::after,
+    .cloud-sponsor-overlay::after,
+    div[data-placement-id*="Billboard"]::after,
+    div[data-placement-id*="Sidebar"]::after,
+    div[data-placement-id*="Partner"]::after,
+    div[data-placement-id*="Composer"]::after {
+      content: "" !important;
+      position: absolute !important;
+      inset: 0 !important;
+      background-color: #000000 !important;
+      opacity: 1 !important;
+      z-index: 2147483647 !important;
+      pointer-events: auto !important;
+      border-radius: inherit !important;
     }
   `;
 
-  // Default CSS Rules targeting all kinds of promotional elements
+  // Default CSS Rules targeting all kinds of promotional elements on Discord
   const DEFAULT_CSS = `
     /* Block Outer Quest Cards & Panels strictly inside bottom-left panels_ area */
     div[class*="panels_"] > *:has([class*="quest" i]):not(:has(button[aria-label="User Settings"])):not(:has([class*="avatar_"])),
@@ -406,7 +443,40 @@
     }
   }
 
-  // Freebuff Ad Detection
+  // Render an opaque black rectangle over Freebuff ads
+  function coverWithBlackRectangle(el) {
+    if (!el || (el.getAttribute && el.getAttribute('data-discord-adblocker-blocked') === 'true')) return;
+
+    el.classList.add('adblocker-covered-rect');
+    el.setAttribute('data-discord-adblocker-blocked', 'true');
+
+    if (!el.querySelector(':scope > .adblocker-direct-overlay')) {
+      const overlay = document.createElement('div');
+      overlay.className = 'adblocker-direct-overlay';
+      overlay.style.cssText = `
+        position: absolute !important;
+        top: 0 !important;
+        left: 0 !important;
+        right: 0 !important;
+        bottom: 0 !important;
+        width: 100% !important;
+        height: 100% !important;
+        background-color: #000000 !important;
+        opacity: 1 !important;
+        z-index: 2147483647 !important;
+        pointer-events: auto !important;
+        border-radius: inherit !important;
+      `;
+      const computedPos = window.getComputedStyle ? window.getComputedStyle(el).position : el.style.position;
+      if (!computedPos || computedPos === 'static') {
+        el.style.setProperty('position', 'relative', 'important');
+      }
+      el.appendChild(overlay);
+    }
+
+    incrementBlockedCount();
+  }
+
   const FREEBUFF_AD_SELECTORS = [
     '.placement-sidebar-card',
     '.cloud-billboard',
@@ -424,14 +494,11 @@
     'div[data-placement-id*="Composer"]'
   ];
 
-  function checkAndHideFreebuffAds() {
+  function checkAndCoverFreebuffAds() {
     if (!IS_FREEBUFF || !config.enabled) return;
 
     document.querySelectorAll(FREEBUFF_AD_SELECTORS.join(',')).forEach(el => {
-      if (el.getAttribute && el.getAttribute('data-discord-adblocker-blocked') === 'true') return;
-      if (el.style) el.style.setProperty('display', 'none', 'important');
-      if (el.setAttribute) el.setAttribute('data-discord-adblocker-blocked', 'true');
-      incrementBlockedCount();
+      coverWithBlackRectangle(el);
     });
   }
 
@@ -561,9 +628,7 @@
       if (IS_FREEBUFF) {
         for (const sel of FREEBUFF_AD_SELECTORS) {
           if (el.matches && el.matches(sel)) {
-            if (el.style) el.style.setProperty('display', 'none', 'important');
-            if (el.setAttribute) el.setAttribute('data-discord-adblocker-blocked', 'true');
-            incrementBlockedCount();
+            coverWithBlackRectangle(el);
             return;
           }
         }
@@ -637,7 +702,7 @@
     // Initial Scan
     const scanElements = () => {
       if (IS_FREEBUFF) {
-        checkAndHideFreebuffAds();
+        checkAndCoverFreebuffAds();
       } else {
         checkAndHideQuestPanels();
         const activeSelectors = getActiveSelectors();
@@ -652,7 +717,7 @@
     const observer = new MutationObserver((mutations) => {
       if (!config.enabled) return;
       if (IS_FREEBUFF) {
-        checkAndHideFreebuffAds();
+        checkAndCoverFreebuffAds();
       } else {
         checkAndHideQuestPanels();
       }
