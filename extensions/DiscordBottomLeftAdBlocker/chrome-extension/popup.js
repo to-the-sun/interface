@@ -51,14 +51,17 @@ document.addEventListener('DOMContentLoaded', () => {
     };
 
     chrome.storage.local.set(config, () => {
-      // Propagate config updates to any active Discord tabs
-      chrome.tabs.query({ url: '*://*.discord.com/*' }, (tabs) => {
-        tabs.forEach(tab => {
-          chrome.tabs.sendMessage(tab.id, {
-            action: 'updateConfig',
-            config: config
-          }).catch(() => {
-            // Tab might be in background or still loading, ignore error
+      // Propagate config updates to any active Discord and Freebuff tabs
+      const targetPatterns = ['*://*.discord.com/*', '*://*.freebuff.com/*'];
+      targetPatterns.forEach(pattern => {
+        chrome.tabs.query({ url: pattern }, (tabs) => {
+          tabs.forEach(tab => {
+            chrome.tabs.sendMessage(tab.id, {
+              action: 'updateConfig',
+              config: config
+            }).catch(() => {
+              // Tab might be in background or still loading, ignore error
+            });
           });
         });
       });

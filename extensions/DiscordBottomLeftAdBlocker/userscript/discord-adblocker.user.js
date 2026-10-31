@@ -1,17 +1,41 @@
 // ==UserScript==
-// @name         Discord Bottom-Left Ad Blocker
+// @name         Discord & Freebuff Ad Blocker
 // @namespace    https://github.com/jules/discord-adblocker
-// @version      1.0.0
-// @description  Blocks intrusive advertisements, Quests, Nitro upsells, and promo popups in the bottom-left corner of Discord. Includes a beautiful integrated in-app settings widget next to your profile panel!
+// @version      1.1.0
+// @description  Blocks intrusive advertisements on Discord and Freebuff.com. Includes a beautiful integrated in-app settings widget next to your Discord profile panel!
 // @author       Jules
 // @match        https://discord.com/*
 // @match        https://*.discord.com/*
+// @match        https://freebuff.com/*
+// @match        https://*.freebuff.com/*
 // @run-at       document-start
 // @grant        none
 // ==/UserScript==
 
 (function() {
   'use strict';
+
+  const IS_FREEBUFF = window.location.hostname.includes('freebuff.com');
+
+  // Freebuff CSS Rules
+  const FREEBUFF_CSS = `
+    .placement-sidebar-card,
+    .cloud-billboard,
+    .partner-placement,
+    .cloud-ad-frame,
+    .cloud-composer-ads,
+    .workspace-gravity-ad,
+    .sponsored-ad,
+    .ad-showcase,
+    .ad-banner,
+    .cloud-sponsor-overlay,
+    div[data-placement-id*="Billboard"],
+    div[data-placement-id*="Sidebar"],
+    div[data-placement-id*="Partner"],
+    div[data-placement-id*="Composer"] {
+      display: none !important;
+    }
+  `;
 
   // Default CSS Rules targeting all kinds of promotional elements
   const DEFAULT_CSS = `
@@ -254,8 +278,15 @@
   // Inject CSS rules instantly at document-start
   const styleEl = document.createElement('style');
   styleEl.id = 'discord-adblocker-userscript-style';
-  styleEl.textContent = DEFAULT_CSS;
-  (document.head || document.documentElement).appendChild(styleEl);
+  styleEl.textContent = IS_FREEBUFF ? FREEBUFF_CSS : DEFAULT_CSS;
+  const target = document.head || document.documentElement;
+  if (target) {
+    target.appendChild(styleEl);
+  } else {
+    document.addEventListener('DOMContentLoaded', () => {
+      (document.head || document.documentElement).appendChild(styleEl);
+    });
+  }
 
   // Configuration management using localStorage
   let config = {
@@ -299,6 +330,11 @@
   function applyConfig() {
     if (!config.enabled) {
       styleEl.textContent = '.adblocker-widget-btn { display: flex; }'; // Keep button styling only
+      return;
+    }
+
+    if (IS_FREEBUFF) {
+      styleEl.textContent = FREEBUFF_CSS;
       return;
     }
 
@@ -368,6 +404,35 @@
     if (statsVal) {
       statsVal.textContent = config.blockedCount.toLocaleString();
     }
+  }
+
+  // Freebuff Ad Detection
+  const FREEBUFF_AD_SELECTORS = [
+    '.placement-sidebar-card',
+    '.cloud-billboard',
+    '.partner-placement',
+    '.cloud-ad-frame',
+    '.cloud-composer-ads',
+    '.workspace-gravity-ad',
+    '.sponsored-ad',
+    '.ad-showcase',
+    '.ad-banner',
+    '.cloud-sponsor-overlay',
+    'div[data-placement-id*="Billboard"]',
+    'div[data-placement-id*="Sidebar"]',
+    'div[data-placement-id*="Partner"]',
+    'div[data-placement-id*="Composer"]'
+  ];
+
+  function checkAndHideFreebuffAds() {
+    if (!IS_FREEBUFF || !config.enabled) return;
+
+    document.querySelectorAll(FREEBUFF_AD_SELECTORS.join(',')).forEach(el => {
+      if (el.getAttribute && el.getAttribute('data-discord-adblocker-blocked') === 'true') return;
+      if (el.style) el.style.setProperty('display', 'none', 'important');
+      if (el.setAttribute) el.setAttribute('data-discord-adblocker-blocked', 'true');
+      incrementBlockedCount();
+    });
   }
 
   // Find highest safe quest parent container to collapse entire quest card box
@@ -493,6 +558,18 @@
       if (!config.enabled) return;
       if (el.closest && el.closest('[data-discord-adblocker-blocked="true"]')) return;
 
+      if (IS_FREEBUFF) {
+        for (const sel of FREEBUFF_AD_SELECTORS) {
+          if (el.matches && el.matches(sel)) {
+            if (el.style) el.style.setProperty('display', 'none', 'important');
+            if (el.setAttribute) el.setAttribute('data-discord-adblocker-blocked', 'true');
+            incrementBlockedCount();
+            return;
+          }
+        }
+        return;
+      }
+
       let matchesAd = false;
 
       // Check quest selectors if enabled
@@ -559,10 +636,14 @@
 
     // Initial Scan
     const scanElements = () => {
-      checkAndHideQuestPanels();
-      const activeSelectors = getActiveSelectors();
-      if (activeSelectors.length > 0) {
-        document.querySelectorAll(activeSelectors.join(',')).forEach(checkAndMarkAd);
+      if (IS_FREEBUFF) {
+        checkAndHideFreebuffAds();
+      } else {
+        checkAndHideQuestPanels();
+        const activeSelectors = getActiveSelectors();
+        if (activeSelectors.length > 0) {
+          document.querySelectorAll(activeSelectors.join(',')).forEach(checkAndMarkAd);
+        }
       }
     };
     scanElements();
@@ -570,19 +651,25 @@
     // Set up MutationObserver to watch for additions
     const observer = new MutationObserver((mutations) => {
       if (!config.enabled) return;
-      checkAndHideQuestPanels();
+      if (IS_FREEBUFF) {
+        checkAndHideFreebuffAds();
+      } else {
+        checkAndHideQuestPanels();
+      }
+
       for (const mutation of mutations) {
         if (mutation.addedNodes) {
           for (const node of mutation.addedNodes) {
             if (node.nodeType === Node.ELEMENT_NODE) {
               checkAndMarkAd(node);
-              const activeSelectors = getActiveSelectors();
+              const activeSelectors = IS_FREEBUFF ? FREEBUFF_AD_SELECTORS : getActiveSelectors();
               if (activeSelectors.length > 0) {
                 node.querySelectorAll(activeSelectors.join(',')).forEach(checkAndMarkAd);
               }
 
-              // Try injecting our shield button next to the User Settings gear
-              tryInjectWidgetButton(node);
+              if (!IS_FREEBUFF) {
+                tryInjectWidgetButton(node);
+              }
             }
           }
         }

@@ -65,16 +65,45 @@ const DEFAULT_CSS = `
   }
 `;
 
+// Freebuff CSS rules
+const FREEBUFF_CSS = `
+  .placement-sidebar-card,
+  .cloud-billboard,
+  .partner-placement,
+  .cloud-ad-frame,
+  .cloud-composer-ads,
+  .workspace-gravity-ad,
+  .sponsored-ad,
+  .ad-showcase,
+  .ad-banner,
+  .cloud-sponsor-overlay,
+  div[data-placement-id*="Billboard"],
+  div[data-placement-id*="Sidebar"],
+  div[data-placement-id*="Partner"],
+  div[data-placement-id*="Composer"] {
+    display: none !important;
+  }
+`;
+
+const IS_FREEBUFF = window.location.hostname.includes('freebuff.com');
+
 // Helper to inject the CSS stylesheet immediately
 function injectStyles(css) {
   const style = document.createElement('style');
   style.id = 'discord-adblocker-static-style';
   style.textContent = css;
-  (document.head || document.documentElement).appendChild(style);
+  const target = document.head || document.documentElement;
+  if (target) {
+    target.appendChild(style);
+  } else {
+    document.addEventListener('DOMContentLoaded', () => {
+      (document.head || document.documentElement).appendChild(style);
+    });
+  }
 }
 
 // Inject default rules instantly
-injectStyles(DEFAULT_CSS);
+injectStyles(IS_FREEBUFF ? FREEBUFF_CSS : DEFAULT_CSS);
 
 // Configuration state loaded from storage
 let config = {
@@ -102,6 +131,11 @@ function applyConfig() {
 
   if (!config.enabled) {
     styleEl.textContent = '';
+    return;
+  }
+
+  if (IS_FREEBUFF) {
+    styleEl.textContent = FREEBUFF_CSS;
     return;
   }
 
@@ -242,6 +276,35 @@ function checkAndHideQuestPanels() {
   }
 }
 
+// Freebuff Ad Detection
+const FREEBUFF_AD_SELECTORS = [
+  '.placement-sidebar-card',
+  '.cloud-billboard',
+  '.partner-placement',
+  '.cloud-ad-frame',
+  '.cloud-composer-ads',
+  '.workspace-gravity-ad',
+  '.sponsored-ad',
+  '.ad-showcase',
+  '.ad-banner',
+  '.cloud-sponsor-overlay',
+  'div[data-placement-id*="Billboard"]',
+  'div[data-placement-id*="Sidebar"]',
+  'div[data-placement-id*="Partner"]',
+  'div[data-placement-id*="Composer"]'
+];
+
+function checkAndHideFreebuffAds() {
+  if (!IS_FREEBUFF || !config.enabled) return;
+
+  document.querySelectorAll(FREEBUFF_AD_SELECTORS.join(',')).forEach(el => {
+    if (el.getAttribute && el.getAttribute('data-discord-adblocker-blocked') === 'true') return;
+    if (el.style) el.style.setProperty('display', 'none', 'important');
+    if (el.setAttribute) el.setAttribute('data-discord-adblocker-blocked', 'true');
+    incrementBlockedCount();
+  });
+}
+
 // Targeted Ad Detector and MutationObserver
 function setupObserver() {
   const questSelectors = [
@@ -307,6 +370,18 @@ function setupObserver() {
   function checkAndMarkAd(el) {
     if (!config.enabled) return;
     if (el.closest && el.closest('[data-discord-adblocker-blocked="true"]')) return;
+
+    if (IS_FREEBUFF) {
+      for (const sel of FREEBUFF_AD_SELECTORS) {
+        if (el.matches && el.matches(sel)) {
+          if (el.style) el.style.setProperty('display', 'none', 'important');
+          if (el.setAttribute) el.setAttribute('data-discord-adblocker-blocked', 'true');
+          incrementBlockedCount();
+          return;
+        }
+      }
+      return;
+    }
 
     let matchesAd = false;
 
@@ -374,10 +449,14 @@ function setupObserver() {
 
   // Scan existing DOM on load
   const scanElements = () => {
-    checkAndHideQuestPanels();
-    const selectors = getActiveSelectors();
-    if (selectors.length > 0) {
-      document.querySelectorAll(selectors.join(',')).forEach(checkAndMarkAd);
+    if (IS_FREEBUFF) {
+      checkAndHideFreebuffAds();
+    } else {
+      checkAndHideQuestPanels();
+      const selectors = getActiveSelectors();
+      if (selectors.length > 0) {
+        document.querySelectorAll(selectors.join(',')).forEach(checkAndMarkAd);
+      }
     }
   };
   scanElements();
@@ -385,13 +464,18 @@ function setupObserver() {
   // Monitor DOM changes for dynamic promotional elements
   const observer = new MutationObserver((mutations) => {
     if (!config.enabled) return;
-    checkAndHideQuestPanels();
+    if (IS_FREEBUFF) {
+      checkAndHideFreebuffAds();
+    } else {
+      checkAndHideQuestPanels();
+    }
+
     for (const mutation of mutations) {
       if (mutation.addedNodes) {
         for (const node of mutation.addedNodes) {
           if (node.nodeType === Node.ELEMENT_NODE) {
             checkAndMarkAd(node);
-            const activeSelectors = getActiveSelectors();
+            const activeSelectors = IS_FREEBUFF ? FREEBUFF_AD_SELECTORS : getActiveSelectors();
             if (activeSelectors.length > 0) {
               node.querySelectorAll(activeSelectors.join(',')).forEach(checkAndMarkAd);
             }

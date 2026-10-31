@@ -1,6 +1,6 @@
-# Discord Bottom-Left Ad Blocker
+# Discord & Freebuff Ad Blocker
 
-An advanced, elegant, and 100% flicker-free advertisement and promotion blocker tailored specifically for the Discord web app (`https://discord.com`).
+An advanced, elegant, and 100% flicker-free advertisement and promotion blocker tailored for Discord (`https://discord.com`) and Freebuff (`https://freebuff.com`).
 
 This project provides two distinct ways to block ads depending on your preference:
 1. **Chrome Extension (Manifest V3)**: A lightweight, standalone extension with a dedicated dark-themed settings and stats popup.
