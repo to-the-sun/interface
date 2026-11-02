@@ -8,17 +8,21 @@
   ],
   "host_permissions": [
     "https://discord.com/*",
-    "https://*.discord.com/*"
+    "https://*.discord.com/*",
+    "https://freebuff.com/*",
+    "https://*.freebuff.com/*"
   ],
   "action": {
     "default_popup": "popup.html",
-    "default_title": "Discord Bottom-Left Ad Blocker"
+    "default_title": "Discord & Freebuff Ad Blocker"
   },
   "content_scripts": [
     {
       "matches": [
         "https://discord.com/*",
-        "https://*.discord.com/*"
+        "https://*.discord.com/*",
+        "https://freebuff.com/*",
+        "https://*.freebuff.com/*"
       ],
       "js": [
         "content.js"
