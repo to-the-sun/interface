@@ -78,7 +78,7 @@ const FREEBUFF_CSS = `
     inset: 0 !important;
     background-color: #1c1d1c !important;
     opacity: 1 !important;
-    z-index: 2147483647 !important;
+    z-index: 1 !important;
     pointer-events: auto !important;
     border-radius: inherit !important;
   }
@@ -118,7 +118,7 @@ const FREEBUFF_CSS = `
     inset: 0 !important;
     background-color: #1c1d1c !important;
     opacity: 1 !important;
-    z-index: 2147483647 !important;
+    z-index: 1 !important;
     pointer-events: auto !important;
     border-radius: inherit !important;
   }
@@ -394,7 +394,7 @@ function coverWithGrayRectangle(el) {
       height: 100% !important;
       background-color: #1c1d1c !important;
       opacity: 1 !important;
-      z-index: 2147483647 !important;
+      z-index: 1 !important;
       pointer-events: auto !important;
       border-radius: inherit !important;
     `;
