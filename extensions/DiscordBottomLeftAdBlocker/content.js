@@ -69,7 +69,7 @@ const IS_FREEBUFF = window.location.hostname.includes('freebuff.com');
 
 // Freebuff CSS rules: Renders an opaque gray rectangle directly over the ads
 const FREEBUFF_CSS = `
-  .adblocker-covered-rect {
+  .adblocker-covered-rect:not(.placement-ad-chip):not(.placement-dismiss) {
     position: relative !important;
   }
   .adblocker-covered-rect::after {
@@ -78,7 +78,7 @@ const FREEBUFF_CSS = `
     inset: 0 !important;
     background-color: #1c1d1c !important;
     opacity: 1 !important;
-    z-index: 1 !important;
+    z-index: 5 !important;
     pointer-events: auto !important;
     border-radius: inherit !important;
   }
@@ -112,13 +112,17 @@ const FREEBUFF_CSS = `
   div[data-placement-id*="Billboard"]::after,
   div[data-placement-id*="Sidebar"]::after,
   div[data-placement-id*="Partner"]::after,
-  div[data-placement-id*="Composer"]::after {
+  div[data-placement-id*="Composer"]::after,
+  .placement-ad-chip::after,
+  .placement-dismiss::after,
+  .ad-disclosure::after,
+  .ad-dismiss::after {
     content: "" !important;
     position: absolute !important;
     inset: 0 !important;
     background-color: #1c1d1c !important;
     opacity: 1 !important;
-    z-index: 1 !important;
+    z-index: 5 !important;
     pointer-events: auto !important;
     border-radius: inherit !important;
   }
@@ -394,13 +398,15 @@ function coverWithGrayRectangle(el) {
       height: 100% !important;
       background-color: #1c1d1c !important;
       opacity: 1 !important;
-      z-index: 1 !important;
+      z-index: 5 !important;
       pointer-events: auto !important;
       border-radius: inherit !important;
     `;
     const computedPos = window.getComputedStyle ? window.getComputedStyle(el).position : el.style.position;
     if (!computedPos || computedPos === 'static') {
       el.style.setProperty('position', 'relative', 'important');
+    } else if (computedPos === 'absolute' || computedPos === 'fixed') {
+      // Retain existing positioning context (e.g. absolute positioning for chips and dismiss buttons)
     }
     el.appendChild(overlay);
   }
@@ -422,7 +428,11 @@ const FREEBUFF_AD_SELECTORS = [
   'div[data-placement-id*="Billboard"]',
   'div[data-placement-id*="Sidebar"]',
   'div[data-placement-id*="Partner"]',
-  'div[data-placement-id*="Composer"]'
+  'div[data-placement-id*="Composer"]',
+  '.placement-ad-chip',
+  '.placement-dismiss',
+  '.ad-disclosure',
+  '.ad-dismiss'
 ];
 
 function checkAndCoverFreebuffAds() {
