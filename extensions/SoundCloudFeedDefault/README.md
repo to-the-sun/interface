@@ -1,8 +1,8 @@
 # SoundCloud Feed Default & Promoted Track Cleaner
 
 A Manifest V3 Google Chrome extension that customizes SoundCloud (`soundcloud.com`) by:
-1. **Setting the Feed page (`/feed`) as the default page** rather than the Home/Discover page (`/` or `/discover`).
-2. **Routing the SoundCloud logo and Home buttons directly to the Feed page** upon click.
+1. **Setting the Feed page (`/feed`) as the default page** when visiting SoundCloud (`/`).
+2. **Routing the SoundCloud logo directly to the Feed page** upon click (while preserving the Home button so you can deliberately go to Home).
 3. **Removing Promoted tracks** at the top of track lists and streams without interfering with regular tracks or page layout.
 4. **Defaulting the Reposts toggle on the Feed page to OFF** automatically.
 5. **Removing the ARTIST TOOLS panel** from the right sidebar.
@@ -13,9 +13,9 @@ A Manifest V3 Google Chrome extension that customizes SoundCloud (`soundcloud.co
 
 ## Features
 
-- **Instant Default Page Redirect**: Automatically redirects `soundcloud.com/`, `soundcloud.com/discover`, and `soundcloud.com/home` straight to `soundcloud.com/feed` at `document_start` using `location.replace` to prevent browser history clutter.
-- **SPA History Navigation Handling**: Hooks into HTML5 history methods (`pushState`, `replaceState`, `popstate`) so internal client-side navigation seamlessly stays on the Feed.
-- **Logo & Navigation Interception**: Automatically updates header logo links (`a.header__logoLink`) and captures navigation clicks to ensure that clicking the logo or Home always leads to your Feed.
+- **Instant Default Page Redirect**: Automatically redirects `soundcloud.com/` straight to `soundcloud.com/feed` at `document_start` using `location.replace` to prevent browser history clutter, while allowing deliberate navigation to Home (`/home` or `/discover`).
+- **SPA History Navigation Handling**: Hooks into HTML5 history methods (`pushState`, `replaceState`, `popstate`) to handle client-side landing navigation smoothly.
+- **Logo Navigation Interception**: Automatically updates header logo links (`a.header__logoLink`) and captures logo clicks to ensure clicking the SoundCloud logo routes directly to your Feed, leaving the Home navigation button intact.
 - **Promoted Track Remover**: Removes sponsored and promoted tracks appearing at the top of stream and track lists (targeting `.soundContext__promoted`, `.promotedBadge`, `.sc-promoted-icon`, etc.) using pure CSS `:has()` rules and a dynamic `MutationObserver` that catches lazy-loaded tracks.
 - **Reposts Default to OFF**: Automatically detects the Reposts filter toggle at the top of the feed and turns it off.
 - **Promotional Panels & Upsell Removal**: Cleanly hides and removes the top promotional banner (e.g. vinyl studio, announcements), the ARTIST TOOLS sidebar panel, and the Try Go+ / Try Artist Pro upsell links.
