@@ -1,0 +1,71 @@
+/**
+ * SoundCloud Feed Default & Promoted Track Cleaner
+ * CSS rules for instant hiding of promoted tracks, top promotional banners, and upsells
+ */
+
+/* Hide track list items containing promoted badges or icons */
+.soundList__item:has(.sc-promoted-icon),
+.soundList__item:has(.sc-promoted-icon-small),
+.soundList__item:has(.sc-promoted-icon-medium),
+.soundList__item:has(.soundContext__promoted),
+.soundList__item:has(.promotedBadge),
+.soundList__item:has(.promotedBadge__promoter),
+.soundList__item:has([aria-label*="Promoted" i]),
+.soundList__item:has([data-test-id*="promoted" i]) {
+  display: none !important;
+}
+
+/* Hide in lazy loading stream lists */
+.lazyLoadingList__list > li:has(.sc-promoted-icon),
+.lazyLoadingList__list > li:has(.sc-promoted-icon-small),
+.lazyLoadingList__list > li:has(.sc-promoted-icon-medium),
+.lazyLoadingList__list > li:has(.soundContext__promoted),
+.lazyLoadingList__list > li:has(.promotedBadge),
+.lazyLoadingList__list > li:has([aria-label*="Promoted" i]),
+.lazyLoadingList__list > li:has([data-test-id*="promoted" i]) {
+  display: none !important;
+}
+
+/* Stream list general fallback */
+.stream__list > li:has(.sc-promoted-icon),
+.stream__list > li:has(.soundContext__promoted),
+.stream__list > li:has(.promotedBadge),
+.stream__list > li:has([aria-label*="Promoted" i]) {
+  display: none !important;
+}
+
+/* Hide standalone promoted audio/display containers */
+.promotedTrack,
+.promotedBadge,
+.soundContext__promoted,
+.sc-promoted-icon {
+  display: none !important;
+}
+
+/* Hide "Try Go+" and "Try Artist Pro" links at the very top of header */
+.header__upsellWrapper,
+.header__creatorUpsell,
+.header__fanUpsell,
+.creatorSubscriptionsButton {
+  display: none !important;
+}
+
+/* Hide promotional announcement banner at top of screen */
+.banner,
+.banner__contentContainer,
+[class*="banner" i]:not([role="search"]):not([role="navigation"]):not([class*="sound"]),
+[class*="PromotionBanner" i],
+.l-product-banners,
+.announcements,
+.announcement,
+[class*="announcement" i],
+.crossfade-announcement-wrapper {
+  display: none !important;
+}
+
+/* Hide "ARTIST TOOLS" panel in right sidebar */
+.sidebarModule:has([id*="credit-tracker"]),
+.sidebarModule:has(iframe[src*="credit-tracker"]),
+.sidebarModule__webiEmbeddedModule:has([id*="credit-tracker"]) {
+  display: none !important;
+}

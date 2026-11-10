@@ -1,0 +1,32 @@
+{
+  "manifest_version": 3,
+  "name": "SoundCloud Feed Default & Promoted Track Cleaner",
+  "version": "1.0.0",
+  "description": "Sets the default SoundCloud page to the Feed rather than Home/Discover and removes promoted tracks from track lists.",
+  "permissions": [
+    "storage"
+  ],
+  "host_permissions": [
+    "https://*.soundcloud.com/*",
+    "https://soundcloud.com/*"
+  ],
+  "action": {
+    "default_popup": "popup.html",
+    "default_title": "SoundCloud Feed Default"
+  },
+  "content_scripts": [
+    {
+      "matches": [
+        "https://*.soundcloud.com/*",
+        "https://soundcloud.com/*"
+      ],
+      "css": [
+        "styles.css"
+      ],
+      "js": [
+        "content.js"
+      ],
+      "run_at": "document_start"
+    }
+  ]
+}
