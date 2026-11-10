@@ -3,33 +3,33 @@
  */
 
 document.addEventListener('DOMContentLoaded', () => {
-  const defaultToFeedToggle = document.getElementById('defaultToFeed');
-  const routeLogoToFeedToggle = document.getElementById('routeLogoToFeed');
-  const removePromotedTracksToggle = document.getElementById('removePromotedTracks');
+  const fields = [
+    'defaultToFeed',
+    'routeLogoToFeed',
+    'removePromotedTracks',
+    'defaultRepostsOff',
+    'removeArtistTools',
+    'removeTopBanner',
+    'removeUpsellLinks'
+  ];
 
   if (typeof chrome !== 'undefined' && chrome.storage && chrome.storage.sync) {
-    chrome.storage.sync.get(['defaultToFeed', 'routeLogoToFeed', 'removePromotedTracks'], (result) => {
-      if (result.defaultToFeed !== undefined) {
-        defaultToFeedToggle.checked = result.defaultToFeed;
-      }
-      if (result.routeLogoToFeed !== undefined) {
-        routeLogoToFeedToggle.checked = result.routeLogoToFeed;
-      }
-      if (result.removePromotedTracks !== undefined) {
-        removePromotedTracksToggle.checked = result.removePromotedTracks;
-      }
+    chrome.storage.sync.get(fields, (result) => {
+      fields.forEach((field) => {
+        const el = document.getElementById(field);
+        if (el && result[field] !== undefined) {
+          el.checked = result[field];
+        }
+      });
     });
 
-    defaultToFeedToggle.addEventListener('change', () => {
-      chrome.storage.sync.set({ defaultToFeed: defaultToFeedToggle.checked });
-    });
-
-    routeLogoToFeedToggle.addEventListener('change', () => {
-      chrome.storage.sync.set({ routeLogoToFeed: routeLogoToFeedToggle.checked });
-    });
-
-    removePromotedTracksToggle.addEventListener('change', () => {
-      chrome.storage.sync.set({ removePromotedTracks: removePromotedTracksToggle.checked });
+    fields.forEach((field) => {
+      const el = document.getElementById(field);
+      if (el) {
+        el.addEventListener('change', () => {
+          chrome.storage.sync.set({ [field]: el.checked });
+        });
+      }
     });
   }
 });

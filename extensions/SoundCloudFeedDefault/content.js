@@ -10,20 +10,40 @@
   const config = {
     defaultToFeed: true,
     removePromotedTracks: true,
-    routeLogoToFeed: true
+    routeLogoToFeed: true,
+    defaultRepostsOff: true,
+    removeArtistTools: true,
+    removeTopBanner: true,
+    removeUpsellLinks: true
   };
 
   if (typeof chrome !== 'undefined' && chrome.storage && chrome.storage.sync) {
-    chrome.storage.sync.get(['defaultToFeed', 'removePromotedTracks', 'routeLogoToFeed'], (result) => {
+    chrome.storage.sync.get([
+      'defaultToFeed',
+      'removePromotedTracks',
+      'routeLogoToFeed',
+      'defaultRepostsOff',
+      'removeArtistTools',
+      'removeTopBanner',
+      'removeUpsellLinks'
+    ], (result) => {
       if (result.defaultToFeed !== undefined) config.defaultToFeed = result.defaultToFeed;
       if (result.removePromotedTracks !== undefined) config.removePromotedTracks = result.removePromotedTracks;
       if (result.routeLogoToFeed !== undefined) config.routeLogoToFeed = result.routeLogoToFeed;
+      if (result.defaultRepostsOff !== undefined) config.defaultRepostsOff = result.defaultRepostsOff;
+      if (result.removeArtistTools !== undefined) config.removeArtistTools = result.removeArtistTools;
+      if (result.removeTopBanner !== undefined) config.removeTopBanner = result.removeTopBanner;
+      if (result.removeUpsellLinks !== undefined) config.removeUpsellLinks = result.removeUpsellLinks;
     });
 
     chrome.storage.onChanged.addListener((changes) => {
       if (changes.defaultToFeed) config.defaultToFeed = changes.defaultToFeed.newValue;
       if (changes.removePromotedTracks) config.removePromotedTracks = changes.removePromotedTracks.newValue;
       if (changes.routeLogoToFeed) config.routeLogoToFeed = changes.routeLogoToFeed.newValue;
+      if (changes.defaultRepostsOff) config.defaultRepostsOff = changes.defaultRepostsOff.newValue;
+      if (changes.removeArtistTools) config.removeArtistTools = changes.removeArtistTools.newValue;
+      if (changes.removeTopBanner) config.removeTopBanner = changes.removeTopBanner.newValue;
+      if (changes.removeUpsellLinks) config.removeUpsellLinks = changes.removeUpsellLinks.newValue;
     });
   }
 
@@ -41,7 +61,6 @@
 
   function checkAndRedirect() {
     if (shouldRedirectToFeed()) {
-      // Use replace to prevent polluting browser history
       window.location.replace('/feed');
     }
   }
@@ -66,7 +85,7 @@
         }
       }
       const res = originalPushState.apply(this, arguments);
-      cleanPromotedTracks();
+      cleanPageElements();
       return res;
     };
 
@@ -82,13 +101,13 @@
         }
       }
       const res = originalReplaceState.apply(this, arguments);
-      cleanPromotedTracks();
+      cleanPageElements();
       return res;
     };
 
     window.addEventListener('popstate', () => {
       checkAndRedirect();
-      cleanPromotedTracks();
+      cleanPageElements();
     });
   }
 
@@ -103,7 +122,6 @@
   function handleLogoAndHomeClicks(event) {
     if (!config.defaultToFeed) return;
 
-    // Check if clicked element is inside header logo link or Home menu item
     const target = event.target;
     if (!target) return;
 
@@ -119,7 +137,6 @@
     }
   }
 
-  // Update link hrefs when header is available in DOM
   function updateNavLinks() {
     if (!config.routeLogoToFeed) return;
 
@@ -131,11 +148,55 @@
     });
   }
 
-  // --- 3. REMOVE PROMOTED TRACKS ---
+  // --- 3. REPOSTS TOGGLE (DEFAULT TO OFF) ---
 
-  /**
-   * Selectors identifying promoted track indicators within track elements or list items
-   */
+  let repostsTurnedOffForCurrentView = false;
+
+  function isFeedPage() {
+    const path = window.location.pathname.replace(/\/+$/, '') || '/';
+    return path === '/feed' || path.endsWith('/feed') || path.includes('feed');
+  }
+
+  function defaultRepostsToOff() {
+    if (!config.defaultRepostsOff) return;
+    if (!isFeedPage()) {
+      repostsTurnedOffForCurrentView = false;
+      return;
+    }
+    if (repostsTurnedOffForCurrentView) return;
+
+    // Search for element or container containing "Reposts"
+    // Usually a toggle switch, checkbox, or button next to "Reposts"
+    const candidates = document.querySelectorAll('button, input[type="checkbox"], [role="switch"], [class*="toggle"], [class*="switch"]');
+    for (const el of candidates) {
+      const parent = el.closest('div, section, header, label');
+      const labelText = (parent ? parent.textContent : '') || el.getAttribute('aria-label') || '';
+
+      if (/\breposts\b/i.test(labelText)) {
+        // Check if currently on / active
+        const isChecked =
+          el.checked === true ||
+          el.getAttribute('aria-checked') === 'true' ||
+          el.classList.contains('active') ||
+          el.classList.contains('checked') ||
+          el.classList.contains('m-active') ||
+          (el.style && el.style.backgroundColor && el.style.backgroundColor.includes('rgb(255, 85, 0)')); // SC orange
+
+        if (isChecked) {
+          el.click();
+          repostsTurnedOffForCurrentView = true;
+          break;
+        } else if (el.checked === false || el.getAttribute('aria-checked') === 'false') {
+          // Already off
+          repostsTurnedOffForCurrentView = true;
+          break;
+        }
+      }
+    }
+  }
+
+  // --- 4. REMOVE PROMOTED TRACKS, PANELS, AND BANNERS ---
+
   const PROMOTED_INDICATOR_SELECTORS = [
     '.soundContext__promoted',
     '.promotedBadge',
@@ -149,9 +210,6 @@
     '[data-test-id*="promoted" i]'
   ];
 
-  /**
-   * Container selectors representing a track entry in lists
-   */
   const TRACK_CONTAINER_SELECTORS = [
     'li.soundList__item',
     '.soundList__item',
@@ -163,13 +221,11 @@
   function isPromotedElement(element) {
     if (!element || !(element instanceof Element)) return false;
 
-    // Direct check for text content or indicators
     for (const sel of PROMOTED_INDICATOR_SELECTORS) {
       if (element.matches && element.matches(sel)) return true;
       if (element.querySelector && element.querySelector(sel)) return true;
     }
 
-    // Check for "Promoted" text badge inside sound badge / sound header
     const soundContext = element.querySelector('.soundContext, .sound__header, .soundTitle__secondary');
     if (soundContext) {
       const text = soundContext.textContent || '';
@@ -184,7 +240,6 @@
   function cleanPromotedTracks() {
     if (!config.removePromotedTracks) return;
 
-    // Check all track containers
     const trackItems = document.querySelectorAll(TRACK_CONTAINER_SELECTORS.join(', '));
     trackItems.forEach((item) => {
       if (isPromotedElement(item)) {
@@ -192,7 +247,6 @@
       }
     });
 
-    // Also look specifically for promoted elements anywhere inside list containers
     for (const sel of PROMOTED_INDICATOR_SELECTORS) {
       const indicators = document.querySelectorAll(sel);
       indicators.forEach((indicator) => {
@@ -200,7 +254,6 @@
         if (parentTrack) {
           parentTrack.remove();
         } else {
-          // If not in a known list container, find the highest sound component
           const soundRoot = indicator.closest('.sound, .soundList__item, [role="group"]');
           if (soundRoot && soundRoot.parentElement) {
             soundRoot.remove();
@@ -208,21 +261,60 @@
         }
       });
     }
+  }
 
+  function cleanPromotionalPanels() {
+    // 1. Remove Top Announcement Banner
+    if (config.removeTopBanner) {
+      const banners = document.querySelectorAll('.announcements, .announcement, [class*="announcement"], .crossfade-announcement-wrapper');
+      banners.forEach((b) => b.remove());
+    }
+
+    // 2. Remove "ARTIST TOOLS" panel in right sidebar
+    if (config.removeArtistTools) {
+      const sidebarModules = document.querySelectorAll('.sidebarModule, [class*="sidebarModule"]');
+      sidebarModules.forEach((mod) => {
+        const text = mod.textContent || '';
+        if (
+          /\bartist tools\b/i.test(text) ||
+          mod.querySelector('[id*="credit-tracker"]') ||
+          mod.querySelector('iframe[src*="credit-tracker"]')
+        ) {
+          mod.remove();
+        }
+      });
+    }
+
+    // 3. Remove "Try Go+" and "Try Artist Pro" links at top of header
+    if (config.removeUpsellLinks) {
+      const upsells = document.querySelectorAll('.header__upsellWrapper, .header__creatorUpsell, .header__fanUpsell, .creatorSubscriptionsButton');
+      upsells.forEach((u) => u.remove());
+
+      // Also check links with text "Try Go+" or "Try Artist Pro"
+      const headerLinks = document.querySelectorAll('header a, .header a');
+      headerLinks.forEach((link) => {
+        const text = link.textContent.trim();
+        if (/^Try Go\+/i.test(text) || /^Try Artist Pro/i.test(text)) {
+          link.remove();
+        }
+      });
+    }
+  }
+
+  function cleanPageElements() {
+    cleanPromotedTracks();
+    cleanPromotionalPanels();
+    defaultRepostsToOff();
     updateNavLinks();
   }
 
-  // --- 4. DOM SETUP & MUTATION OBSERVER ---
+  // --- 5. DOM SETUP & MUTATION OBSERVER ---
 
   function initDOMListeners() {
-    // Capture-phase click listener for logo & home
     document.addEventListener('click', handleLogoAndHomeClicks, true);
 
-    // Initial pass
-    cleanPromotedTracks();
-    updateNavLinks();
+    cleanPageElements();
 
-    // Observe subsequent DOM updates (lazy loading lists, navigation changes)
     const observer = new MutationObserver((mutations) => {
       let shouldClean = false;
       for (const mutation of mutations) {
@@ -232,7 +324,7 @@
         }
       }
       if (shouldClean) {
-        cleanPromotedTracks();
+        cleanPageElements();
       }
     });
 
@@ -249,13 +341,11 @@
             subtree: true
           });
         }
-        cleanPromotedTracks();
-        updateNavLinks();
+        cleanPageElements();
       });
     }
   }
 
-  // Initialize listeners when document is accessible
   if (document.readyState === 'loading') {
     document.addEventListener('DOMContentLoaded', initDOMListeners);
   } else {
@@ -269,6 +359,8 @@
       shouldRedirectToFeed,
       isPromotedElement,
       cleanPromotedTracks,
+      cleanPromotionalPanels,
+      defaultRepostsToOff,
       updateNavLinks
     };
   }

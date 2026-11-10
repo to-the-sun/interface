@@ -19,7 +19,7 @@
     }
 
     body {
-      width: 280px;
+      width: 290px;
       margin: 0;
       padding: 16px;
       font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
@@ -31,7 +31,7 @@
       display: flex;
       align-items: center;
       gap: 10px;
-      margin-bottom: 14px;
+      margin-bottom: 12px;
     }
 
     .logo-icon {
@@ -48,7 +48,7 @@
     }
 
     .subtitle {
-      margin: 0 0 14px 0;
+      margin: 0 0 12px 0;
       font-size: 12px;
       line-height: 1.4;
       color: var(--sc-muted);
@@ -65,7 +65,7 @@
       padding: 8px 12px;
       border-radius: 6px;
       border: 1px solid var(--sc-border);
-      margin-bottom: 14px;
+      margin-bottom: 12px;
     }
 
     .status-dot {
@@ -148,7 +148,7 @@
     }
 
     .footer {
-      margin-top: 14px;
+      margin-top: 12px;
       font-size: 11px;
       color: var(--sc-muted);
       text-align: center;
@@ -162,7 +162,7 @@
     </svg>
     <h2>SoundCloud Cleaner</h2>
   </div>
-  <p class="subtitle">Default to Feed stream & remove promoted tracks automatically.</p>
+  <p class="subtitle">Default to Feed stream, remove promoted tracks, and clean promotions.</p>
 
   <div class="status-badge">
     <span class="status-dot"></span>
@@ -190,6 +190,38 @@
       <span class="setting-label">Remove promoted tracks</span>
       <span class="switch">
         <input type="checkbox" id="removePromotedTracks" checked>
+        <span class="slider"></span>
+      </span>
+    </label>
+
+    <label class="setting-item" for="defaultRepostsOff">
+      <span class="setting-label">Default Reposts toggle off</span>
+      <span class="switch">
+        <input type="checkbox" id="defaultRepostsOff" checked>
+        <span class="slider"></span>
+      </span>
+    </label>
+
+    <label class="setting-item" for="removeArtistTools">
+      <span class="setting-label">Remove ARTIST TOOLS panel</span>
+      <span class="switch">
+        <input type="checkbox" id="removeArtistTools" checked>
+        <span class="slider"></span>
+      </span>
+    </label>
+
+    <label class="setting-item" for="removeTopBanner">
+      <span class="setting-label">Remove top promotional banner</span>
+      <span class="switch">
+        <input type="checkbox" id="removeTopBanner" checked>
+        <span class="slider"></span>
+      </span>
+    </label>
+
+    <label class="setting-item" for="removeUpsellLinks">
+      <span class="setting-label">Remove Try Go+ / Artist Pro</span>
+      <span class="switch">
+        <input type="checkbox" id="removeUpsellLinks" checked>
         <span class="slider"></span>
       </span>
     </label>

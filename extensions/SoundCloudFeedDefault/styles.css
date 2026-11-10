@@ -1,6 +1,6 @@
 /**
  * SoundCloud Feed Default & Promoted Track Cleaner
- * CSS rules for instant hiding of promoted tracks & promotional units
+ * CSS rules for instant hiding of promoted tracks, top promotional banners, and upsells
  */
 
 /* Hide track list items containing promoted badges or icons */
@@ -29,7 +29,8 @@
 /* Stream list general fallback */
 .stream__list > li:has(.sc-promoted-icon),
 .stream__list > li:has(.soundContext__promoted),
-.stream__list > li:has(.promotedBadge) {
+.stream__list > li:has(.promotedBadge),
+.stream__list > li:has([aria-label*="Promoted" i]) {
   display: none !important;
 }
 
@@ -38,5 +39,28 @@
 .promotedBadge,
 .soundContext__promoted,
 .sc-promoted-icon {
+  display: none !important;
+}
+
+/* Hide "Try Go+" and "Try Artist Pro" links at the very top of header */
+.header__upsellWrapper,
+.header__creatorUpsell,
+.header__fanUpsell,
+.creatorSubscriptionsButton {
+  display: none !important;
+}
+
+/* Hide promotional announcement banner at top of screen */
+.announcements,
+.announcement,
+[class*="announcement"],
+.crossfade-announcement-wrapper {
+  display: none !important;
+}
+
+/* Hide "ARTIST TOOLS" panel in right sidebar */
+.sidebarModule:has([id*="credit-tracker"]),
+.sidebarModule:has(iframe[src*="credit-tracker"]),
+.sidebarModule__webiEmbeddedModule:has([id*="credit-tracker"]) {
   display: none !important;
 }
