@@ -52,11 +52,7 @@
   function shouldRedirectToFeed(pathname) {
     if (!config.defaultToFeed) return false;
     const cleanPath = (pathname || window.location.pathname).replace(/\/+$/, '') || '/';
-    return (
-      cleanPath === '/' ||
-      cleanPath === '/discover' ||
-      cleanPath === '/home'
-    );
+    return cleanPath === '/';
   }
 
   function checkAndRedirect() {
@@ -120,15 +116,15 @@
     // History hook fallback
   }
 
-  // --- 2. HEADER LOGO & HOME ROUTING ---
+  // --- 2. HEADER LOGO ROUTING ---
 
-  function handleLogoAndHomeClicks(event) {
-    if (!config.defaultToFeed) return;
+  function handleLogoClicks(event) {
+    if (!config.routeLogoToFeed && !config.defaultToFeed) return;
 
     const target = event.target;
     if (!target) return;
 
-    const logoLink = target.closest('a.header__logoLink, .header__logo a, a[data-menu-name="home"]');
+    const logoLink = target.closest('a.header__logoLink, .header__logo a');
     if (logoLink) {
       event.preventDefault();
       event.stopPropagation();
@@ -143,7 +139,7 @@
   function updateNavLinks() {
     if (!config.routeLogoToFeed) return;
 
-    const logoLinks = document.querySelectorAll('a.header__logoLink, .header__logo a, a[data-menu-name="home"]');
+    const logoLinks = document.querySelectorAll('a.header__logoLink, .header__logo a');
     logoLinks.forEach((link) => {
       if (link.getAttribute('href') !== '/feed') {
         link.setAttribute('href', '/feed');
@@ -355,7 +351,7 @@
   // --- 5. DOM SETUP & MUTATION OBSERVER ---
 
   function initDOMListeners() {
-    document.addEventListener('click', handleLogoAndHomeClicks, true);
+    document.addEventListener('click', handleLogoClicks, true);
 
     cleanPageElements();
     schedulePeriodicCleaning();
