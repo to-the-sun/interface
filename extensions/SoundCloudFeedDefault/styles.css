@@ -51,9 +51,14 @@
 }
 
 /* Hide promotional announcement banner at top of screen */
+.banner,
+.banner__contentContainer,
+[class*="banner" i]:not([role="search"]):not([role="navigation"]):not([class*="sound"]),
+[class*="PromotionBanner" i],
+.l-product-banners,
 .announcements,
 .announcement,
-[class*="announcement"],
+[class*="announcement" i],
 .crossfade-announcement-wrapper {
   display: none !important;
 }

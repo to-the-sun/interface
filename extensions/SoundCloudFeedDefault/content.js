@@ -86,6 +86,7 @@
       }
       const res = originalPushState.apply(this, arguments);
       cleanPageElements();
+      schedulePeriodicCleaning();
       return res;
     };
 
@@ -102,12 +103,14 @@
       }
       const res = originalReplaceState.apply(this, arguments);
       cleanPageElements();
+      schedulePeriodicCleaning();
       return res;
     };
 
     window.addEventListener('popstate', () => {
       checkAndRedirect();
       cleanPageElements();
+      schedulePeriodicCleaning();
     });
   }
 
@@ -165,29 +168,25 @@
     }
     if (repostsTurnedOffForCurrentView) return;
 
-    // Search for element or container containing "Reposts"
-    // Usually a toggle switch, checkbox, or button next to "Reposts"
     const candidates = document.querySelectorAll('button, input[type="checkbox"], [role="switch"], [class*="toggle"], [class*="switch"]');
     for (const el of candidates) {
       const parent = el.closest('div, section, header, label');
       const labelText = (parent ? parent.textContent : '') || el.getAttribute('aria-label') || '';
 
       if (/\breposts\b/i.test(labelText)) {
-        // Check if currently on / active
         const isChecked =
           el.checked === true ||
           el.getAttribute('aria-checked') === 'true' ||
           el.classList.contains('active') ||
           el.classList.contains('checked') ||
           el.classList.contains('m-active') ||
-          (el.style && el.style.backgroundColor && el.style.backgroundColor.includes('rgb(255, 85, 0)')); // SC orange
+          (el.style && el.style.backgroundColor && el.style.backgroundColor.includes('rgb(255, 85, 0)'));
 
         if (isChecked) {
           el.click();
           repostsTurnedOffForCurrentView = true;
           break;
         } else if (el.checked === false || el.getAttribute('aria-checked') === 'false') {
-          // Already off
           repostsTurnedOffForCurrentView = true;
           break;
         }
@@ -264,10 +263,40 @@
   }
 
   function cleanPromotionalPanels() {
-    // 1. Remove Top Announcement Banner
+    // 1. Remove Top Announcement Banner (supporting delayed loads)
     if (config.removeTopBanner) {
-      const banners = document.querySelectorAll('.announcements, .announcement, [class*="announcement"], .crossfade-announcement-wrapper');
-      banners.forEach((b) => b.remove());
+      const bannerSelectors = [
+        '.banner',
+        '.banner__contentContainer',
+        '.announcements',
+        '.announcement',
+        '[class*="announcement" i]',
+        '.crossfade-announcement-wrapper',
+        '.l-product-banners',
+        '[class*="PromotionBanner" i]'
+      ];
+
+      document.querySelectorAll(bannerSelectors.join(', ')).forEach((b) => {
+        b.remove();
+      });
+
+      // Cleanly remove banners by their dismiss buttons or specific banner containers
+      const dismissButtons = document.querySelectorAll('.banner__close, .announcement__dismiss');
+      dismissButtons.forEach((btn) => {
+        const bannerContainer = btn.closest('.banner, .announcements, .announcement, [class*="banner" i], [class*="announcement" i]');
+        if (bannerContainer) {
+          bannerContainer.remove();
+        }
+      });
+
+      // Query specific promotional containers or links for vinyl/promos
+      const promoLinks = document.querySelectorAll('a[href*="vinyl-studio"], a[href*="pages/vinyl"]');
+      promoLinks.forEach((link) => {
+        const promoContainer = link.closest('.banner, .announcements, .announcement, [class*="banner" i], [class*="announcement" i]');
+        if (promoContainer) {
+          promoContainer.remove();
+        }
+      });
     }
 
     // 2. Remove "ARTIST TOOLS" panel in right sidebar
@@ -290,7 +319,6 @@
       const upsells = document.querySelectorAll('.header__upsellWrapper, .header__creatorUpsell, .header__fanUpsell, .creatorSubscriptionsButton');
       upsells.forEach((u) => u.remove());
 
-      // Also check links with text "Try Go+" or "Try Artist Pro"
       const headerLinks = document.querySelectorAll('header a, .header a');
       headerLinks.forEach((link) => {
         const text = link.textContent.trim();
@@ -308,28 +336,37 @@
     updateNavLinks();
   }
 
+  // Periodic cleaning for delayed-loading banners and content
+  let periodicCleaningTimer = null;
+  function schedulePeriodicCleaning() {
+    if (periodicCleaningTimer) clearInterval(periodicCleaningTimer);
+
+    let count = 0;
+    periodicCleaningTimer = setInterval(() => {
+      cleanPageElements();
+      count++;
+      if (count > 20) {
+        clearInterval(periodicCleaningTimer);
+        periodicCleaningTimer = null;
+      }
+    }, 250);
+  }
+
   // --- 5. DOM SETUP & MUTATION OBSERVER ---
 
   function initDOMListeners() {
     document.addEventListener('click', handleLogoAndHomeClicks, true);
 
     cleanPageElements();
+    schedulePeriodicCleaning();
 
-    const observer = new MutationObserver((mutations) => {
-      let shouldClean = false;
-      for (const mutation of mutations) {
-        if (mutation.addedNodes.length > 0) {
-          shouldClean = true;
-          break;
-        }
-      }
-      if (shouldClean) {
-        cleanPageElements();
-      }
+    const observer = new MutationObserver(() => {
+      cleanPageElements();
     });
 
-    if (document.body) {
-      observer.observe(document.body, {
+    const targetNode = document.body || document.documentElement;
+    if (targetNode) {
+      observer.observe(targetNode, {
         childList: true,
         subtree: true
       });
@@ -342,6 +379,7 @@
           });
         }
         cleanPageElements();
+        schedulePeriodicCleaning();
       });
     }
   }
