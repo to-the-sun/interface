@@ -3,7 +3,7 @@
 An advanced, elegant, and flicker-free ad blocking solution tailored for Discord (`https://discord.com`) and Freebuff (`https://freebuff.com`).
 
 * **Discord**: Retains its native 100% flicker-free advertisement removal and panel collapsing (`display: none !important`), protecting your user profile, voice, and RTC controls.
-* **Freebuff.com**: Applies an opaque gray rectangle overlay directly over ads (sidebar billboard cards and prompt composer partner placements), neutralizing ads while preserving page structure and layout stability.
+* **Freebuff.com**: Applies an opaque rectangle overlay directly over ads (sidebar billboard cards and prompt composer partner placements), dynamically matching the exact shade of the surrounding background to seamlessly neutralize ads while preserving page structure and layout stability.
 
 This project provides two distinct ways to block ads depending on your preference:
 1. **Chrome Extension (Manifest V3)**: A lightweight, standalone extension with a dedicated dark-themed settings and stats popup.
@@ -13,7 +13,7 @@ This project provides two distinct ways to block ads depending on your preferenc
 
 ## 🚀 Key Features
 
-* **Freebuff.com Opaque Gray Rectangle Overlay**: Neutralizes sidebar ad cards (billboards, gravity ads) and composer partner ads by drawing an opaque solid gray overlay (`#1c1d1c`, 100% opacity) directly over ad boundaries without removing elements or altering chat box layouts.
+* **Freebuff.com Dynamic Shade Matching Overlay**: Neutralizes sidebar ad cards (billboards, gravity ads) and composer partner ads by dynamically sampling and changing to the exact shade of the surrounding background (100% opacity) directly over ad boundaries without removing elements or altering chat box layouts.
 * **Discord Native Flicker-Free Ad Removal**: Blocks Quests, Nitro promotions, store items, and popup callouts cleanly and instantaneously at `document_start`.
 * **Zero Layout Pop-in**: Injects stylesheet rules before the DOM begins rendering.
 * **Live Statistics Counter**: See exactly how many advertisements and promotions have been neutralized in real-time, with an option to reset at any time.
