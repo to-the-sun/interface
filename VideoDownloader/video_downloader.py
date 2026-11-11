@@ -9,9 +9,11 @@ Uses yt-dlp with automatic fallback to direct media extraction via urllib.
 import argparse
 import os
 import re
+import ssl
 import sys
 import threading
 import time
+import urllib.error
 import urllib.parse
 import urllib.request
 
@@ -43,7 +45,7 @@ def download_direct_url(url: str, output_dir: str, filename: str = None, progres
         parsed_url = urllib.parse.urlparse(url)
         path_name = os.path.basename(parsed_url.path)
         if path_name and "." in path_name:
-            filename = clean_filename(path_name)
+            filename = clean_filename(path_name) or f"video_{int(time.time())}.mp4"
         else:
             filename = f"video_{int(time.time())}.mp4"
 
@@ -60,7 +62,17 @@ def download_direct_url(url: str, output_dir: str, filename: str = None, progres
         },
     )
 
-    with urllib.request.urlopen(req) as response:
+    # Attempt with default SSL context, fallback to unverified context if certificate validation fails
+    try:
+        response = urllib.request.urlopen(req)
+    except (urllib.error.URLError, ssl.SSLError) as ssl_err:
+        if "CERTIFICATE_VERIFY_FAILED" in str(ssl_err) or isinstance(ssl_err, ssl.SSLError):
+            ctx = ssl._create_unverified_context()
+            response = urllib.request.urlopen(req, context=ctx)
+        else:
+            raise
+
+    with response:
         total_size = response.headers.get("Content-Length")
         total_bytes = int(total_size) if total_size and total_size.isdigit() else 0
         downloaded = 0
@@ -106,7 +118,16 @@ def extract_direct_video_from_html(url: str) -> str:
             )
         },
     )
-    with urllib.request.urlopen(req) as resp:
+    try:
+        resp = urllib.request.urlopen(req)
+    except (urllib.error.URLError, ssl.SSLError) as ssl_err:
+        if "CERTIFICATE_VERIFY_FAILED" in str(ssl_err) or isinstance(ssl_err, ssl.SSLError):
+            ctx = ssl._create_unverified_context()
+            resp = urllib.request.urlopen(req, context=ctx)
+        else:
+            raise
+
+    with resp:
         content_type = resp.headers.get("Content-Type", "")
         if "video/" in content_type:
             return url
@@ -155,6 +176,7 @@ def download_video(
             "noplaylist": True,
             "quiet": True,
             "no_warnings": True,
+            "nocheckcertificate": True,
         }
 
         if audio_only:
