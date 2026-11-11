@@ -67,7 +67,8 @@ const DEFAULT_CSS = `
 
 const IS_FREEBUFF = window.location.hostname.includes('freebuff.com');
 
-// Freebuff CSS rules: Renders an opaque gray rectangle directly over the ads
+// Freebuff CSS rules: Renders an opaque rectangle directly over the ads,
+// dynamically matching the exact shade of the surrounding background.
 const FREEBUFF_CSS = `
   .adblocker-covered-rect:not(.placement-ad-chip):not(.placement-dismiss) {
     position: relative !important;
@@ -76,7 +77,7 @@ const FREEBUFF_CSS = `
     content: "" !important;
     position: absolute !important;
     inset: 0 !important;
-    background-color: #1c1d1c !important;
+    background-color: var(--adblocker-bg-color, #1c1d1c) !important;
     opacity: 1 !important;
     z-index: 5 !important;
     pointer-events: auto !important;
@@ -120,7 +121,7 @@ const FREEBUFF_CSS = `
     content: "" !important;
     position: absolute !important;
     inset: 0 !important;
-    background-color: #1c1d1c !important;
+    background-color: var(--adblocker-bg-color, #1c1d1c) !important;
     opacity: 1 !important;
     z-index: 5 !important;
     pointer-events: auto !important;
@@ -378,10 +379,50 @@ function setupObserver() {
     return selectors;
   }
 
-// Render an opaque gray rectangle over Freebuff ads
+// Helper to inspect the exact shade of the surrounding background
+function getExactBackgroundColor(el) {
+  if (!el || !window.getComputedStyle) return '#1c1d1c';
+
+  let curr = el.parentElement;
+  while (curr && curr !== document.documentElement) {
+    const style = window.getComputedStyle(curr);
+    const bg = style ? style.backgroundColor : '';
+    if (bg && bg !== 'transparent' && bg !== 'rgba(0, 0, 0, 0)') {
+      // Check if alpha is non-zero
+      const rgbaMatch = bg.match(/rgba\(\s*([\d.]+)\s*,\s*([\d.]+)\s*,\s*([\d.]+)\s*,\s*([\d.]+)\s*\)/);
+      if (rgbaMatch) {
+        const alpha = parseFloat(rgbaMatch[4]);
+        if (alpha > 0) return bg;
+      } else {
+        return bg;
+      }
+    }
+    curr = curr.parentElement;
+  }
+
+  // Check body or documentElement
+  if (document.body) {
+    const bodyBg = window.getComputedStyle(document.body).backgroundColor;
+    if (bodyBg && bodyBg !== 'transparent' && bodyBg !== 'rgba(0, 0, 0, 0)') {
+      return bodyBg;
+    }
+  }
+  if (document.documentElement) {
+    const htmlBg = window.getComputedStyle(document.documentElement).backgroundColor;
+    if (htmlBg && htmlBg !== 'transparent' && htmlBg !== 'rgba(0, 0, 0, 0)') {
+      return htmlBg;
+    }
+  }
+
+  return '#1c1d1c';
+}
+
+// Render an opaque rectangle over Freebuff ads dynamically matching surrounding background shade
 function coverWithGrayRectangle(el) {
   if (!el || (el.getAttribute && el.getAttribute('data-discord-adblocker-blocked') === 'true')) return;
 
+  const exactBgColor = getExactBackgroundColor(el);
+  el.style.setProperty('--adblocker-bg-color', exactBgColor);
   el.classList.add('adblocker-covered-rect');
   el.setAttribute('data-discord-adblocker-blocked', 'true');
 
@@ -396,7 +437,7 @@ function coverWithGrayRectangle(el) {
       bottom: 0 !important;
       width: 100% !important;
       height: 100% !important;
-      background-color: #1c1d1c !important;
+      background-color: ${exactBgColor} !important;
       opacity: 1 !important;
       z-index: 5 !important;
       pointer-events: auto !important;
