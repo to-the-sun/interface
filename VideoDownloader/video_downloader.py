@@ -3,10 +3,12 @@
 Video Downloader
 A comprehensive tool to download videos from any web page or direct URL.
 Supports both Command-Line Interface (CLI) and a Graphical User Interface (GUI).
-Uses yt-dlp with automatic fallback to direct media extraction via urllib.
+Uses yt-dlp with automatic fallback to direct media extraction via urllib and stream decrypters.
 """
 
 import argparse
+import base64
+import json
 import os
 import re
 import ssl
@@ -16,6 +18,12 @@ import time
 import urllib.error
 import urllib.parse
 import urllib.request
+
+try:
+    from cryptography.hazmat.primitives.ciphers.aead import AESGCM
+    HAS_AESGCM = True
+except ImportError:
+    HAS_AESGCM = False
 
 try:
     import yt_dlp
@@ -29,6 +37,132 @@ try:
     HAS_TKINTER = True
 except ImportError:
     HAS_TKINTER = False
+
+
+def safe_urlopen(req, timeout=30):
+    """
+    Executes a urllib request with robust error handling:
+    - Retries with unverified SSL context if certificate validation fails (CERTIFICATE_VERIFY_FAILED).
+    - Automatically falls back to http:// if an https:// connection encounters [SSL: WRONG_VERSION_NUMBER].
+    """
+    try:
+        return urllib.request.urlopen(req, timeout=timeout)
+    except (urllib.error.URLError, ssl.SSLError, ConnectionResetError) as err:
+        err_str = str(err).lower()
+
+        # Handle WRONG_VERSION_NUMBER (server sent plain HTTP instead of TLS handshake)
+        if "wrong_version_number" in err_str:
+            url = req.full_url if hasattr(req, "full_url") else str(req)
+            if url.startswith("https://"):
+                fallback_url = "http://" + url[8:]
+                if hasattr(req, "headers"):
+                    new_req = urllib.request.Request(fallback_url, headers=dict(req.headers))
+                else:
+                    new_req = fallback_url
+                return urllib.request.urlopen(new_req, timeout=timeout)
+
+        # Handle expired / invalid SSL certificate
+        if "certificate_verify_failed" in err_str or isinstance(err, ssl.SSLError):
+            ctx = ssl._create_unverified_context()
+            try:
+                return urllib.request.urlopen(req, context=ctx, timeout=timeout)
+            except (urllib.error.URLError, ssl.SSLError) as retry_err:
+                retry_str = str(retry_err).lower()
+                if "wrong_version_number" in retry_str:
+                    url = req.full_url if hasattr(req, "full_url") else str(req)
+                    if url.startswith("https://"):
+                        fallback_url = "http://" + url[8:]
+                        if hasattr(req, "headers"):
+                            new_req = urllib.request.Request(fallback_url, headers=dict(req.headers))
+                        else:
+                            new_req = fallback_url
+                        return urllib.request.urlopen(new_req, timeout=timeout)
+                raise
+
+        raise
+
+
+def decrypt_byse_playback(playback_info: dict) -> list:
+    """
+    Decrypts the AES-256-GCM playback payload used by Byse embedded players.
+    Returns a list of extracted source URLs (m3u8, mp4, etc.).
+    """
+    if not HAS_AESGCM:
+        return []
+
+    def b64_decode(s: str) -> bytes:
+        s = s.replace("-", "+").replace("_", "/")
+        s += "=" * ((4 - len(s) % 4) % 4)
+        return base64.b64decode(s)
+
+    key_parts = playback_info.get("key_parts", [])
+    try:
+        ver = int(playback_info.get("version", "0"))
+    except (ValueError, TypeError):
+        ver = 0
+
+    pair = [ver, 31 - ver]
+    selected_parts = [
+        b64_decode(key_parts[p - 1])
+        for p in pair
+        if isinstance(key_parts, list) and 1 <= p <= len(key_parts)
+    ]
+    if not selected_parts and key_parts:
+        selected_parts = [b64_decode(p) for p in key_parts if isinstance(p, str)]
+
+    key = b"".join(selected_parts)
+    iv = b64_decode(playback_info.get("iv", ""))
+    payload = b64_decode(playback_info.get("payload", ""))
+
+    try:
+        aesgcm = AESGCM(key)
+        decrypted_bytes = aesgcm.decrypt(iv, payload, None)
+        data = json.loads(decrypted_bytes.decode("utf-8"))
+        sources = data.get("sources", [])
+        return [s["url"] for s in sources if isinstance(s, dict) and "url" in s]
+    except Exception:
+        return []
+
+
+def resolve_byse_embed_stream(embed_url: str) -> str:
+    """
+    Attempts to resolve a Byse player embed URL (e.g. https://bysesukior.com/e/<id>)
+    to its direct .m3u8 master playlist stream URL.
+    """
+    code_match = re.search(r'/(?:e|d)/([a-zA-Z0-9]+)', embed_url)
+    if not code_match:
+        return ""
+
+    video_code = code_match.group(1)
+    parsed = urllib.parse.urlparse(embed_url)
+    origin = f"{parsed.scheme}://{parsed.netloc}"
+    api_url = f"{origin}/api/videos/{video_code}"
+
+    req = urllib.request.Request(
+        api_url,
+        headers={
+            "User-Agent": (
+                "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+                "AppleWebKit/537.36 (KHTML, like Gecko) "
+                "Chrome/120.0.0.0 Safari/537.36"
+            ),
+            "Accept": "application/json",
+            "Referer": embed_url,
+        },
+    )
+
+    try:
+        with safe_urlopen(req) as resp:
+            data = json.loads(resp.read().decode("utf-8"))
+            playback = data.get("playback")
+            if playback and isinstance(playback, dict):
+                stream_urls = decrypt_byse_playback(playback)
+                if stream_urls:
+                    return stream_urls[0]
+    except Exception:
+        pass
+
+    return ""
 
 
 def clean_filename(filename: str) -> str:
@@ -62,15 +196,7 @@ def download_direct_url(url: str, output_dir: str, filename: str = None, progres
         },
     )
 
-    # Attempt with default SSL context, fallback to unverified context if certificate validation fails
-    try:
-        response = urllib.request.urlopen(req)
-    except (urllib.error.URLError, ssl.SSLError) as ssl_err:
-        if "CERTIFICATE_VERIFY_FAILED" in str(ssl_err) or isinstance(ssl_err, ssl.SSLError):
-            ctx = ssl._create_unverified_context()
-            response = urllib.request.urlopen(req, context=ctx)
-        else:
-            raise
+    response = safe_urlopen(req)
 
     with response:
         content_type = response.headers.get("Content-Type", "").lower()
@@ -146,14 +272,7 @@ def extract_direct_video_from_html(url: str, depth: int = 0) -> str:
             )
         },
     )
-    try:
-        resp = urllib.request.urlopen(req)
-    except (urllib.error.URLError, ssl.SSLError) as ssl_err:
-        if "CERTIFICATE_VERIFY_FAILED" in str(ssl_err) or isinstance(ssl_err, ssl.SSLError):
-            ctx = ssl._create_unverified_context()
-            resp = urllib.request.urlopen(req, context=ctx)
-        else:
-            raise
+    resp = safe_urlopen(req)
 
     with resp:
         content_type = resp.headers.get("Content-Type", "")
@@ -183,11 +302,28 @@ def extract_direct_video_from_html(url: str, depth: int = 0) -> str:
     for iframe_src in iframe_matches:
         if iframe_src and not iframe_src.startswith("javascript:"):
             resolved_iframe_url = urllib.parse.urljoin(url, iframe_src)
-            # Try to extract stream from the iframe page
-            extracted = extract_direct_video_from_html(resolved_iframe_url, depth=depth + 1)
-            if extracted:
-                return extracted
+
+            # Check if this iframe is a Byse player embed
+            if "/e/" in resolved_iframe_url or "/d/" in resolved_iframe_url:
+                byse_stream = resolve_byse_embed_stream(resolved_iframe_url)
+                if byse_stream:
+                    return byse_stream
+
+            # Try to extract stream from the iframe page recursively
+            try:
+                extracted = extract_direct_video_from_html(resolved_iframe_url, depth=depth + 1)
+                if extracted:
+                    return extracted
+            except Exception:
+                pass
+
             candidate_iframes.append(resolved_iframe_url)
+
+    # 4. Check if current URL itself is a Byse embed
+    if "/e/" in url or "/d/" in url:
+        byse_stream = resolve_byse_embed_stream(url)
+        if byse_stream:
+            return byse_stream
 
     if candidate_iframes:
         # Prefer iframes that mention player, video, or embed keywords
@@ -267,7 +403,7 @@ def download_video(
                 ),
             }
 
-        # If direct_url points to another page or player embed, try yt-dlp on it first
+        # If direct_url points to another page or stream, try yt-dlp on it first
         if HAS_YT_DLP and direct_url != url:
             try:
                 with yt_dlp.YoutubeDL(ydl_opts) as ydl:
