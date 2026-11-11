@@ -73,29 +73,54 @@ def download_direct_url(url: str, output_dir: str, filename: str = None, progres
             raise
 
     with response:
+        content_type = response.headers.get("Content-Type", "").lower()
+        if "text/html" in content_type or "text/plain" in content_type:
+            raise ValueError(
+                f"Target URL returned an HTML/text webpage ({content_type}) rather than a playable video file."
+            )
+
         total_size = response.headers.get("Content-Length")
         total_bytes = int(total_size) if total_size and total_size.isdigit() else 0
         downloaded = 0
         chunk_size = 64 * 1024
+        first_chunk = True
 
-        with open(dest_path, "wb") as f:
-            while True:
-                chunk = response.read(chunk_size)
-                if not chunk:
-                    break
-                f.write(chunk)
-                downloaded += len(chunk)
-                if progress_hook:
-                    percent = (downloaded / total_bytes * 100) if total_bytes > 0 else 0
-                    progress_hook(
-                        {
-                            "status": "downloading",
-                            "downloaded_bytes": downloaded,
-                            "total_bytes": total_bytes,
-                            "filename": dest_path,
-                            "_percent_str": f"{percent:.1f}%",
-                        }
-                    )
+        try:
+            with open(dest_path, "wb") as f:
+                while True:
+                    chunk = response.read(chunk_size)
+                    if not chunk:
+                        break
+
+                    # Validate magic bytes on first chunk: prevent saving HTML files masquerading as video
+                    if first_chunk:
+                        first_chunk = False
+                        stripped_start = chunk.lstrip()[:100].lower()
+                        if stripped_start.startswith(b"<!doctype html") or stripped_start.startswith(b"<html"):
+                            raise ValueError(
+                                "Downloaded content appears to be an HTML webpage rather than a valid media stream."
+                            )
+
+                    f.write(chunk)
+                    downloaded += len(chunk)
+                    if progress_hook:
+                        percent = (downloaded / total_bytes * 100) if total_bytes > 0 else 0
+                        progress_hook(
+                            {
+                                "status": "downloading",
+                                "downloaded_bytes": downloaded,
+                                "total_bytes": total_bytes,
+                                "filename": dest_path,
+                                "_percent_str": f"{percent:.1f}%",
+                            }
+                        )
+        except Exception:
+            if os.path.exists(dest_path):
+                try:
+                    os.remove(dest_path)
+                except OSError:
+                    pass
+            raise
 
     if progress_hook:
         progress_hook({"status": "finished", "filename": dest_path})
@@ -103,11 +128,14 @@ def download_direct_url(url: str, output_dir: str, filename: str = None, progres
     return dest_path
 
 
-def extract_direct_video_from_html(url: str) -> str:
+def extract_direct_video_from_html(url: str, depth: int = 0) -> str:
     """
-    Attempts to scrape a direct video source (<video src="..."> or <source src="...">)
-    from an HTML page if yt-dlp is unavailable or fails.
+    Attempts to scrape a direct video source (<video src="...">, <source src="...">,
+    or embedded player iframes) from an HTML page if yt-dlp is unavailable or fails.
     """
+    if depth > 2:
+        return ""
+
     req = urllib.request.Request(
         url,
         headers={
@@ -129,10 +157,11 @@ def extract_direct_video_from_html(url: str) -> str:
 
     with resp:
         content_type = resp.headers.get("Content-Type", "")
-        if "video/" in content_type:
+        if "video/" in content_type or "audio/" in content_type:
             return url
         html = resp.read().decode("utf-8", errors="ignore")
 
+    # 1. Search for direct video tags <video src="..."> or <source src="...">
     matches = re.findall(
         r'<video[^>]+src=["\']([^"\']+)["\']|<source[^>]+src=["\']([^"\']+)["\']',
         html,
@@ -140,13 +169,32 @@ def extract_direct_video_from_html(url: str) -> str:
     )
     for match in matches:
         src = match[0] or match[1]
-        if src:
+        if src and not src.startswith("blob:"):
             return urllib.parse.urljoin(url, src)
 
-    # Search for common direct video file extensions in attributes
-    ext_match = re.search(r'["\'](https?://[^"\']+\.(?:mp4|webm|mkv|mov)[^"\']*)["\']', html)
+    # 2. Search for direct video file links in page markup or scripts (.mp4, .webm, .m3u8)
+    ext_match = re.search(r'["\'](https?://[^"\']+\.(?:mp4|webm|mkv|mov|m3u8)[^"\']*)["\']', html)
     if ext_match:
         return ext_match.group(1)
+
+    # 3. Search for embedded player iframes <iframe ... src="...">
+    iframe_matches = re.findall(r'<iframe[^>]+src=["\']([^"\']+)["\']', html, re.IGNORECASE)
+    candidate_iframes = []
+    for iframe_src in iframe_matches:
+        if iframe_src and not iframe_src.startswith("javascript:"):
+            resolved_iframe_url = urllib.parse.urljoin(url, iframe_src)
+            # Try to extract stream from the iframe page
+            extracted = extract_direct_video_from_html(resolved_iframe_url, depth=depth + 1)
+            if extracted:
+                return extracted
+            candidate_iframes.append(resolved_iframe_url)
+
+    if candidate_iframes:
+        # Prefer iframes that mention player, video, or embed keywords
+        for cand in candidate_iframes:
+            if any(k in cand.lower() for k in ["player", "embed", "video", "/e/", "stream"]):
+                return cand
+        return candidate_iframes[0]
 
     return ""
 
@@ -208,13 +256,33 @@ def download_video(
     # Direct extraction / download fallback
     try:
         direct_url = extract_direct_video_from_html(url)
-        target_url = direct_url if direct_url else url
+        if not direct_url:
+            return {
+                "success": False,
+                "filepath": None,
+                "error": (
+                    f"yt-dlp could not find a video extractor ({yt_err}), "
+                    "and no direct playable video stream (<video>, <source>, .mp4, .m3u8) "
+                    "was found on the page."
+                ),
+            }
+
+        # If direct_url points to another page or player embed, try yt-dlp on it first
+        if HAS_YT_DLP and direct_url != url:
+            try:
+                with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+                    info = ydl.extract_info(direct_url, download=True)
+                    filename = ydl.prepare_filename(info)
+                    return {"success": True, "filepath": filename, "error": None}
+            except Exception:
+                pass
 
         downloaded_file = download_direct_url(
-            target_url, output_dir, progress_hook=progress_callback
+            direct_url, output_dir, progress_hook=progress_callback
         )
         return {"success": True, "filepath": downloaded_file, "error": None}
     except Exception as fallback_err:
+        # Clean up any corrupt partial file on error
         return {
             "success": False,
             "filepath": None,
